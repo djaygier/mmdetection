@@ -10,20 +10,74 @@ metainfo = {
 num_classes = 1
 
 # 2. Model setting
-# Update num_classes in all heads using nested dict override syntax.
-# This ensures we do NOT delete the bbox_roi_extractor and other
-# required fields during inheritance.
+# We must re-define the heads to update num_classes. 
+# We copy the structure from the base co_dino_5scale_r50_lsj_8xb2_1x_coco.py
+# but update num_classes to 1.
+num_dec_layer = 6
+loss_lambda = 2.0
+
 model = dict(
     query_head=dict(num_classes=num_classes),
-    # Override just the num_classes inside the nested bbox_head of roi_head[0]
     roi_head=[
         dict(
+            type='CoStandardRoIHead',
+            bbox_roi_extractor=dict(
+                type='SingleRoIExtractor',
+                roi_layer=dict(
+                    type='RoIAlign', output_size=7, sampling_ratio=0),
+                out_channels=256,
+                featmap_strides=[4, 8, 16, 32, 64],
+                finest_scale=56),
             bbox_head=dict(
-                num_classes=num_classes))
+                type='Shared2FCBBoxHead',
+                in_channels=256,
+                fc_out_channels=1024,
+                roi_feat_size=7,
+                num_classes=num_classes,
+                bbox_coder=dict(
+                    type='DeltaXYWHBBoxCoder',
+                    target_means=[0., 0., 0., 0.],
+                    target_stds=[0.1, 0.1, 0.2, 0.2]),
+                reg_class_agnostic=False,
+                reg_decoded_bbox=True,
+                loss_cls=dict(
+                    type='CrossEntropyLoss',
+                    use_sigmoid=False,
+                    loss_weight=1.0 * num_dec_layer * loss_lambda),
+                loss_bbox=dict(
+                    type='GIoULoss',
+                    loss_weight=10.0 * num_dec_layer * loss_lambda)))
     ],
-    # Override just the num_classes inside bbox_head[0]
     bbox_head=[
-        dict(num_classes=num_classes)
+        dict(
+            type='CoATSSHead',
+            num_classes=num_classes,
+            in_channels=256,
+            stacked_convs=1,
+            feat_channels=256,
+            anchor_generator=dict(
+                type='AnchorGenerator',
+                ratios=[1.0],
+                octave_base_scale=8,
+                scales_per_octave=1,
+                strides=[4, 8, 16, 32, 64, 128]),
+            bbox_coder=dict(
+                type='DeltaXYWHBBoxCoder',
+                target_means=[.0, .0, .0, .0],
+                target_stds=[0.1, 0.1, 0.2, 0.2]),
+            loss_cls=dict(
+                type='FocalLoss',
+                use_sigmoid=True,
+                gamma=2.0,
+                alpha=0.25,
+                loss_weight=1.0 * num_dec_layer * loss_lambda),
+            loss_bbox=dict(
+                type='GIoULoss',
+                loss_weight=2.0 * num_dec_layer * loss_lambda),
+            loss_centerness=dict(
+                type='CrossEntropyLoss',
+                use_sigmoid=True,
+                loss_weight=1.0 * num_dec_layer * loss_lambda)),
     ]
 )
 
@@ -58,6 +112,3 @@ optim_wrapper = dict(optimizer=dict(lr=1e-4))
 default_hooks = dict(
     checkpoint=dict(by_epoch=True, interval=1, max_keep_ckpts=3),
     logger=dict(type='LoggerHook', interval=50))
-
-# 6. Load Pretrained Weights
-# load_from is already set in the base config to the o365tococo checkpoint.
