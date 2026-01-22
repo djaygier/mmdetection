@@ -29,6 +29,10 @@ cd /tmp
 git clone https://github.com/open-mmlab/mmcv.git
 cd mmcv
 git checkout v2.1.0  # Or checkout 'main' for latest compatibility
+
+# IMPORTANT: Pin setuptools to avoid Python 3.12 pkgutil error
+pip install "setuptools<81"
+
 MMCV_WITH_OPS=1 FORCE_CUDA=1 pip install . --no-build-isolation
 cd /workspace/mmdetection
 ```
@@ -68,7 +72,30 @@ PYTHONPATH=. python tools/train.py projects/CO-DETR/configs/codino/co_dino_5scal
 - `mim_init.py`: Internal link initializer (vital for fixing path errors).
 
 ## 🛠️ Common Fixes
+- **AttributeError: 'pkgutil' has no attribute 'ImpImporter'**: Run `pip install "setuptools<81"` before building MMCV from source.
 - **FileNotFoundError: .../train\\images\\...**: This happens if the COCO JSON contains Windows-style backslashes. Run `python fix_json_paths.py` on the training machine to fix them.
 - **ModuleNotFoundError: No module named 'mmcv._ext'**: This happens if MMCV was installed without CUDA. Re-run Step 2.
 - **FileNotFoundError: .../model-index.yml**: This happens if the internal links are broken. Re-run Step 3 (`python mim_init.py`).
 - **ModuleNotFoundError: No module named 'projects'**: Always ensure you are in the root directory and use `PYTHONPATH=.`.
+
+---
+
+## 🧠 Alternative: ViT Backbone (DINOv3)
+
+If you want to use a ViT (DINOv3 Base) backbone instead of Swin-L:
+
+### Prerequisites
+```bash
+pip install einops xformers  # Optional but recommended
+```
+
+### Download DINOv3 Checkpoint
+Download your DINOv3-B checkpoint (from HuggingFace) and place it in `models/dinov3_vitb14_pretrain.pth`.
+
+### Start Training
+```bash
+PYTHONPATH=. python tools/train.py projects/CO-DETR/configs/codino/co_dino_5scale_vit_b_ant.py
+```
+
+> [!WARNING]
+> If you encounter OOM errors, reduce `batch_size` to 1.

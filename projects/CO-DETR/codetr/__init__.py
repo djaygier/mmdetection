@@ -5,9 +5,14 @@ from .co_roi_head import CoStandardRoIHead
 from .codetr import CoDETR
 from .transformer import (CoDinoTransformer, DetrTransformerDecoderLayer,
                           DetrTransformerEncoder, DinoTransformerDecoder)
+from .vit import ViT
+from .sfp import SFP
+from .layer_decay_optimizer_constructor import (LearningRateDecayOptimizerConstructor,
+                                                 LayerDecayOptimizerConstructor)
 
 __all__ = [
     'CoDETR', 'CoDinoTransformer', 'DinoTransformerDecoder', 'CoDINOHead',
     'CoATSSHead', 'CoStandardRoIHead', 'DetrTransformerEncoder',
-    'DetrTransformerDecoderLayer'
+    'DetrTransformerDecoderLayer', 'ViT', 'SFP', 'LearningRateDecayOptimizerConstructor',
+    'LayerDecayOptimizerConstructor'
 ]
