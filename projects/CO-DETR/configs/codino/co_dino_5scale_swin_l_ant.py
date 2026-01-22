@@ -142,3 +142,8 @@ test_evaluator = val_evaluator
 default_hooks = dict(
     checkpoint=dict(by_epoch=True, interval=1, max_keep_ckpts=3),
     logger=dict(type='LoggerHook', interval=50))
+
+# 6. FP8 + torch.compile on backbone only
+custom_hooks = [
+    dict(type='FP8CompileBackboneHook', compile_mode='default', enable_fp8=True)
+]

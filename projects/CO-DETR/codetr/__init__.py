@@ -5,9 +5,10 @@ from .co_roi_head import CoStandardRoIHead
 from .codetr import CoDETR
 from .transformer import (CoDinoTransformer, DetrTransformerDecoderLayer,
                           DetrTransformerEncoder, DinoTransformerDecoder)
+from .fp8_compile_hook import FP8CompileBackboneHook
 
 __all__ = [
     'CoDETR', 'CoDinoTransformer', 'DinoTransformerDecoder', 'CoDINOHead',
     'CoATSSHead', 'CoStandardRoIHead', 'DetrTransformerEncoder',
-    'DetrTransformerDecoderLayer'
+    'DetrTransformerDecoderLayer', 'FP8CompileBackboneHook'
 ]
