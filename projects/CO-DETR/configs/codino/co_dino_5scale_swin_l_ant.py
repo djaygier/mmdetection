@@ -113,8 +113,8 @@ test_pipeline = [
 ]
 
 train_dataloader = dict(
-    batch_size=16,  # Matches original total batch size (16 GPUs x 1)
-    num_workers=16,
+    batch_size=12,  # Matches original total batch size (16 GPUs x 1)
+    num_workers=32,
     persistent_workers=True,
     dataset=dict(
         data_root=data_root,
