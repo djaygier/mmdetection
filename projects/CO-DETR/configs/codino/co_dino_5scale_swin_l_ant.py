@@ -113,8 +113,9 @@ test_pipeline = [
 ]
 
 train_dataloader = dict(
-    batch_size=1,  # Reverted to original batch size
-    num_workers=4,
+    batch_size=4,  # Increased for better GPU utilization (30% -> 80%+)
+    num_workers=8,  # Increased to prevent CPU bottleneck
+    persistent_workers=True,
     dataset=dict(
         data_root=data_root,
         metainfo=metainfo,
