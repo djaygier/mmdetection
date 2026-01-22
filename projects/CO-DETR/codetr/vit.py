@@ -211,6 +211,10 @@ class Attention(nn.Module):
             q = q * self.scale
             # (B, num_heads, N, head_dim) @ (B, num_heads, head_dim, N) -> (B, num_heads, N, N)
             attn = (q @ k.transpose(-2, -1))
+            
+            # Clamp attention scores for stability
+            attn = torch.clamp(attn, min=-50, max=50)
+            
             # Perform softmax in float32 for numerical stability
             attn = attn.float().softmax(dim=-1).type_as(q)
             x = (attn @ v).transpose(1, 2).reshape(B, N, C)
@@ -248,7 +252,10 @@ class LayerScale(nn.Module):
         self.gamma = nn.Parameter(init_values * torch.ones(dim))
 
     def forward(self, x):
-        return x * self.gamma
+        out = x * self.gamma
+        if torch.isnan(out).any():
+             print(f"NAN in LayerScale (gamma={self.gamma.mean().item()})")
+        return out
 
 
 class Block(nn.Module):
@@ -306,16 +313,24 @@ class Block(nn.Module):
             
             # Reconstruct and apply MLP
             x_spatial = torch.cat([prefix, spatial, suffix], dim=1)
-            x = x + self.drop_path(self.ls1(x_spatial)) # Note: norm already applied inside
-            x = x + self.drop_path(self.ls2(self.mlp(self.norm2(x))))
+            x_attn = x + self.drop_path(self.ls1(x_spatial))
+            if torch.isnan(x_attn).any():
+                print(f"NAN in Block (Windowed) after Attn")
+            
+            x = x_attn + self.drop_path(self.ls2(self.mlp(self.norm2(x_attn))))
+            if torch.isnan(x).any():
+                print(f"NAN in Block (Windowed) after MLP")
         else:
             # Global attention
-            x = x + self.drop_path(self.ls1(self.attn(self.norm1(x), rope=rope, h=h, w=w)))
-            x = x + self.drop_path(self.ls2(self.mlp(self.norm2(x))))
+            x_attn = x + self.drop_path(self.ls1(self.attn(self.norm1(x), rope=rope, h=h, w=w)))
+            if torch.isnan(x_attn).any():
+                print(f"NAN in Block (Global) after Attn")
+                
+            x = x_attn + self.drop_path(self.ls2(self.mlp(self.norm2(x_attn))))
             
         # Debug NaN check
         if torch.isnan(x).any():
-            print(f"NAN detected in Block!")
+            print(f"NAN in Block Final")
             
         return x
 
@@ -439,6 +454,9 @@ class ViT(BaseModule):
             nn.init.constant_(m.weight, 1.0)
 
     def forward(self, x):
+        if torch.isnan(x).any():
+            print("NAN in Input Image!")
+            
         B, C, H, W = x.shape
         x = self.patch_embed(x)  # (B, Hp, Wp, C)
         Hp, Wp = x.shape[1], x.shape[2]
