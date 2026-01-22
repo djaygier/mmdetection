@@ -281,7 +281,8 @@ class RPNHead(AnchorHead):
 
         if results.bboxes.numel() > 0:
             bboxes = get_box_tensor(results.bboxes)
-            det_bboxes, keep_idxs = batched_nms(bboxes, results.scores,
+            # FP16/AMP fix: ensures both tensors are float32 to avoid dtype mismatch in NMS
+            det_bboxes, keep_idxs = batched_nms(bboxes.float(), results.scores.float(),
                                                 results.level_ids, cfg.nms)
             results = results[keep_idxs]
             # some nms would reweight the score, such as softnms
