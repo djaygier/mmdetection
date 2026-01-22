@@ -144,3 +144,7 @@ test_evaluator = val_evaluator
 default_hooks = dict(
     checkpoint=dict(by_epoch=True, interval=1, max_keep_ckpts=3),
     logger=dict(type='LoggerHook', interval=50))
+
+# 6. Speed Optimizations
+env_cfg = dict(
+    cudnn_benchmark=True)  # Auto-tune CUDA kernels for faster execution
