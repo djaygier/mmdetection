@@ -21,6 +21,13 @@ except:
     from timm.models.layers import DropPath, trunc_normal_
 
 try:
+    import torchao
+    from torchao.quantization import float8_weight_only, quantize_
+    HAS_TORCHAO = True
+except ImportError:
+    HAS_TORCHAO = False
+
+try:
     import xformers.ops as xops
     HAS_XFORMERS = True
 except:
@@ -404,6 +411,35 @@ class ViT(BaseModule):
 
         self.apply(self._init_weights)
         self._freeze_stages()
+        
+        # Apply torch.compile to blocks if possible
+        if hasattr(torch, 'compile'):
+            try:
+                self.blocks = torch.compile(self.blocks, mode='default')
+                print_log("Applied torch.compile to ViT blocks", level='INFO')
+            except Exception as e:
+                print_log(f"Failed to apply torch.compile: {e}", level='WARNING')
+
+    def init_weights(self):
+        """Initialize weights and apply FP8 optimization after loading."""
+        super().init_weights()
+        # After weights are loaded (from init_cfg), apply FP8 quantization to the backbone
+        self.apply_fp8_optimization()
+
+    def apply_fp8_optimization(self):
+        """Apply torchao FP8 quantization to frozen linear layers."""
+        if not HAS_TORCHAO:
+            print_log("torchao not found, skipping FP8 optimization", level='WARNING')
+            return
+            
+        print_log("Applying float8_weight_only quantization to ViT backbone...", level='INFO')
+        # We target linear layers in blocks
+        # float8_weight_only is suitable for frozen backbones to save memory and speed up matmuls
+        try:
+            quantize_(self, float8_weight_only())
+            print_log("Successfully applied FP8 quantization", level='INFO')
+        except Exception as e:
+            print_log(f"FP8 quantization failed: {e}", level='ERROR')
 
     def _freeze_stages(self):
         """Freeze stages based on self.frozen_stages."""
