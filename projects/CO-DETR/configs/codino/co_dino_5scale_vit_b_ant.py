@@ -25,6 +25,7 @@ loss_lambda = 2.0
 model = dict(
     _delete_=True,  # Delete entire parent model and redefine
     type='CoDETR',
+    use_lsj=False,  # Disable LSJ since we use fixed 640x640 resolution
     backbone=dict(
         type='ViT',
         img_size=640,  # Your image size
