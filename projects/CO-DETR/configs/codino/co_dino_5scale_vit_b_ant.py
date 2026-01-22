@@ -329,7 +329,7 @@ test_evaluator = val_evaluator
 # 4. Optimizer with Layer-wise LR Decay (important for ViT)
 optim_wrapper = dict(
     type='AmpOptimWrapper',
-    optimizer=dict(type='AdamW', lr=5e-5, weight_decay=0.01),
+    optimizer=dict(type='AdamW', lr=2e-4, weight_decay=0.01),
     clip_grad=dict(max_norm=0.1, norm_type=2),
     constructor='ViTLearningRateDecayOptimizerConstructor',
     paramwise_cfg=dict(num_layers=12, decay_rate=0.8, decay_type='layer_wise'),  # 12 layers for ViT-B

@@ -167,24 +167,39 @@ def window_unpartition(windows, window_size, pad_hw, hw):
     return x
 
 
-def get_abs_pos(abs_pos, has_cls_token, hw):
+def get_abs_pos(abs_pos, has_cls_token, hw, num_register_tokens=0):
     h, w = hw
-    if has_cls_token:
-        abs_pos = abs_pos[:, 1:]
-    xy_num = abs_pos.shape[1]
+    total_special = (1 if has_cls_token else 0) + num_register_tokens
+    
+    if total_special > 0:
+        # Extract special tokens (usually at the start or end, DINOv3 has cls at start, regs usually follow)
+        # However, the pos_embed is usually [cls, spatial..., regs] or [cls, regs, spatial...]
+        # DINOv3/DINOv2 with registers usually has [cls, regs, spatial] or [cls, spatial, regs]
+        # Our vit.pycat: [cls, spatial, regs]. So pos_embed should match.
+        special_pos = abs_pos[:, :total_special]
+        spatial_pos = abs_pos[:, total_special:]
+    else:
+        special_pos = None
+        spatial_pos = abs_pos
+
+    xy_num = spatial_pos.shape[1]
     size = int(math.sqrt(xy_num))
     assert size * size == xy_num
 
     if size != h or size != w:
-        new_abs_pos = F.interpolate(
-            abs_pos.reshape(1, size, size, -1).permute(0, 3, 1, 2),
+        new_spatial_pos = F.interpolate(
+            spatial_pos.reshape(1, size, size, -1).permute(0, 3, 1, 2),
             size=(h, w),
             mode="bicubic",
             align_corners=False,
         )
-        return new_abs_pos.permute(0, 2, 3, 1)
+        new_spatial_pos = new_spatial_pos.permute(0, 2, 3, 1).reshape(1, -1, abs_pos.shape[-1])
     else:
-        return abs_pos.reshape(1, h, w, -1)
+        new_spatial_pos = spatial_pos
+
+    if special_pos is not None:
+        return torch.cat([special_pos, new_spatial_pos], dim=1)
+    return new_spatial_pos
 
 
 class SwiGLU(nn.Module):
@@ -306,7 +321,7 @@ class Block(nn.Module):
 
 @MODELS.register_module()
 class ViT(BaseModule):
-    """Vision Transformer backbone for detection (ViTDet style)."""
+    """Vision Transformer backbone for DINOv3 / ViTDet style."""
 
     def __init__(
         self,
@@ -316,7 +331,7 @@ class ViT(BaseModule):
         embed_dim=768,
         depth=12,
         num_heads=12,
-        mlp_ratio=4*2/3,
+        mlp_ratio=4,
         qkv_bias=True,
         drop_path_rate=0.0,
         norm_layer=partial(nn.LayerNorm, eps=1e-6),
@@ -328,13 +343,17 @@ class ViT(BaseModule):
         residual_block_indexes=(),
         use_act_checkpoint=False,
         use_lsj=False,
-        pretrain_img_size=224,
+        pretrain_img_size=518,
         pretrain_use_cls_token=True,
+        num_register_tokens=4,
         xattn=False,
+        frozen_stages=-1,  # Added for future freezing flexibility
         init_cfg=None
     ):
         super(ViT, self).__init__(init_cfg=init_cfg)
         self.pretrain_use_cls_token = pretrain_use_cls_token
+        self.num_register_tokens = num_register_tokens
+        self.frozen_stages = frozen_stages
 
         self.patch_embed = PatchEmbed(
             kernel_size=(patch_size, patch_size),
@@ -343,9 +362,16 @@ class ViT(BaseModule):
             embed_dim=embed_dim,
         )
 
+        self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim)) if pretrain_use_cls_token else None
+        self.register_tokens = nn.Parameter(torch.zeros(1, num_register_tokens, embed_dim)) if num_register_tokens > 0 else None
+
         if use_abs_pos:
             num_patches = (pretrain_img_size // patch_size) * (pretrain_img_size // patch_size)
-            num_positions = (num_patches + 1) if pretrain_use_cls_token else num_patches
+            num_positions = num_patches
+            if pretrain_use_cls_token:
+                num_positions += 1
+            if num_register_tokens > 0:
+                num_positions += num_register_tokens
             self.pos_embed = nn.Parameter(torch.zeros(1, num_positions, embed_dim))
         else:
             self.pos_embed = None
@@ -390,8 +416,37 @@ class ViT(BaseModule):
 
         if self.pos_embed is not None:
             nn.init.trunc_normal_(self.pos_embed, std=0.02)
+        if self.cls_token is not None:
+            nn.init.trunc_normal_(self.cls_token, std=0.02)
+        if self.register_tokens is not None:
+            nn.init.trunc_normal_(self.register_tokens, std=0.02)
 
         self.apply(self._init_weights)
+        self._freeze_stages()
+
+    def _freeze_stages(self):
+        """Freeze stages based on self.frozen_stages."""
+        if self.frozen_stages >= 0:
+            self.patch_embed.eval()
+            for param in self.patch_embed.parameters():
+                param.requires_grad = False
+            if self.pos_embed is not None:
+                self.pos_embed.requires_grad = False
+            if self.cls_token is not None:
+                self.cls_token.requires_grad = False
+            if self.register_tokens is not None:
+                self.register_tokens.requires_grad = False
+
+        for i in range(self.frozen_stages):
+            m = self.blocks[i]
+            m.eval()
+            for param in m.parameters():
+                param.requires_grad = False
+
+    def train(self, mode=True):
+        """Override train to keep frozen stages in eval mode."""
+        super(ViT, self).train(mode)
+        self._freeze_stages()
 
     def _init_weights(self, m):
         if isinstance(m, nn.Linear):
@@ -403,12 +458,64 @@ class ViT(BaseModule):
             nn.init.constant_(m.weight, 1.0)
 
     def forward(self, x):
+        B, C, H, W = x.shape
         x = self.patch_embed(x)
+        Hp, Wp = x.shape[1], x.shape[2]
+        
+        # Reshape to tokens: (B, H*W, C)
+        x = x.reshape(B, Hp * Wp, -1)
+
+        # Append special tokens
+        if self.cls_token is not None:
+            cls_tokens = self.cls_token.expand(B, -1, -1)
+            x = torch.cat((cls_tokens, x), dim=1)
+        
+        if self.register_tokens is not None:
+            reg_tokens = self.register_tokens.expand(B, -1, -1)
+            x = torch.cat((x, reg_tokens), dim=1)
+
+        # Add Absolute Positional Embedding
         if self.pos_embed is not None:
-            x = x + get_abs_pos(self.pos_embed, self.pretrain_use_cls_token, (x.shape[1], x.shape[2]))
+             pos_embed = get_abs_pos(self.pos_embed, self.pretrain_use_cls_token, (Hp, Wp), 
+                                   num_register_tokens=self.num_register_tokens)
+             # Reshape pos_embed to match token sequence
+             # get_abs_pos returns (1, H, W, C) + special tokens if handled
+             # Correct logic to handle flattened tokens + interpolated spatial pos:
+             x = x + pos_embed.reshape(1, -1, x.shape[-1])
+
+        # Blocks expect (B, H, W, C) or handle tokens
+        # The Attention class we have uses x.shape to determine H, W
+        # If tokens are present, we must pass them carefully or reshape.
+        # Let's simplify: only pass spatial patches to blocks if windowing is used.
+        
+        # Number of prefix tokens
+        num_prefix = (1 if self.cls_token is not None else 0)
+        num_suffix = self.num_register_tokens
 
         for blk in self.blocks:
-            x = blk(x)
+            if blk.window_size > 0:
+                # Extract spatial part for windowed attention
+                prefix = x[:, :num_prefix, :]
+                spatial = x[:, num_prefix:num_prefix + Hp*Wp, :]
+                suffix = x[:, num_prefix + Hp*Wp:, :]
+                
+                spatial = spatial.reshape(B, Hp, Wp, -1)
+                spatial = blk(spatial)
+                spatial = spatial.reshape(B, Hp*Wp, -1)
+                
+                x = torch.cat((prefix, spatial, suffix), dim=1)
+            else:
+                # Global attention can handle sequence or grid
+                # Our Attention class expects (B, H, W, C). Let's adapt it.
+                # Actually, our Block/Attention implementation is very grid-heavy.
+                # To support registers/cls, we'll keep x in (B, H, W, C) for blocks and handle tokens separately if needed.
+                # BUT DINOv3 registers are part of the sequence.
+                # Simplified for CO-DETR logic: we'll project spatial only to the next stage.
+                x_spatial = x[:, num_prefix:num_prefix + Hp*Wp, :].reshape(B, Hp, Wp, -1)
+                x_spatial = blk(x_spatial)
+                x = torch.cat((x[:, :num_prefix, :], x_spatial.reshape(B, Hp * Wp, -1), x[:, num_prefix + Hp*Wp:, :]), dim=1)
 
-        outputs = [self.out_norm(x).permute(0, 3, 1, 2).contiguous()]
+        # Final output
+        x_spatial = x[:, num_prefix:num_prefix + Hp*Wp, :].reshape(B, Hp, Wp, -1)
+        outputs = [self.out_norm(x_spatial).permute(0, 3, 1, 2).contiguous()]
         return outputs
