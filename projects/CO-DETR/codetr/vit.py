@@ -72,28 +72,25 @@ class RoPE2D(nn.Module):
         dtype = x.dtype
         
         # Use loaded periods from checkpoint
-        periods = self.periods.to(dtype)
-        # Avoid division by zero
-        periods = torch.clamp(periods, min=1e-6)
+        periods = self.periods.float()  # computing angles in float32 for stability
         num_periods = periods.shape[0]
-        rope_dim = num_periods * 4  # 2D * 2 (sin/cos) * num_periods
+        rope_dim = num_periods * 4
         
         # Generate 2D position grid
-        pos_h = torch.arange(h, device=device, dtype=dtype)
-        pos_w = torch.arange(w, device=device, dtype=dtype)
+        pos_h = torch.arange(h, device=device, dtype=torch.float32)
+        pos_w = torch.arange(w, device=device, dtype=torch.float32)
         grid_h, grid_w = torch.meshgrid(pos_h, pos_w, indexing='ij')
         
         # Compute angles using periods
-        # periods shape: (num_periods,)
-        angles_h = grid_h.flatten()[:, None] / periods[None, :]  # (H*W, num_periods)
-        angles_w = grid_w.flatten()[:, None] / periods[None, :]  # (H*W, num_periods)
+        angles_h = grid_h.flatten()[:, None] / periods[None, :]
+        angles_w = grid_w.flatten()[:, None] / periods[None, :]
         
         # Interleave h and w angles, then compute sin/cos
-        angles = torch.stack([angles_h, angles_w], dim=-1)  # (H*W, num_periods, 2)
-        angles = angles.reshape(N, -1)  # (H*W, num_periods * 2)
+        angles = torch.stack([angles_h, angles_w], dim=-1)
+        angles = angles.reshape(N, -1)
         
-        cos_angles = angles.cos()  # (N, rope_dim/2)
-        sin_angles = angles.sin()  # (N, rope_dim/2)
+        cos_angles = angles.cos()
+        sin_angles = angles.sin()
         
         # Only apply RoPE to the first rope_dim dimensions
         if rope_dim > head_dim:
@@ -102,8 +99,9 @@ class RoPE2D(nn.Module):
         rope_dim_half = rope_dim // 2
         
         # Reshape for broadcasting: (1, 1, N, rope_dim_half)
-        cos_angles = cos_angles[:, :rope_dim_half].unsqueeze(0).unsqueeze(0)
-        sin_angles = sin_angles[:, :rope_dim_half].unsqueeze(0).unsqueeze(0)
+        # Cast back to input dtype for application
+        cos_angles = cos_angles[:, :rope_dim_half].unsqueeze(0).unsqueeze(0).to(dtype)
+        sin_angles = sin_angles[:, :rope_dim_half].unsqueeze(0).unsqueeze(0).to(dtype)
         
         # Split x into RoPE part and passthrough part
         x_rope = x[..., :rope_dim]
@@ -112,7 +110,7 @@ class RoPE2D(nn.Module):
         # Split RoPE part in half for rotation
         x1, x2 = x_rope[..., :rope_dim_half], x_rope[..., rope_dim_half:]
         
-        # Apply rotation
+        # Apply rotation (in original dtype)
         x_rotated = torch.cat([
             x1 * cos_angles - x2 * sin_angles,
             x1 * sin_angles + x2 * cos_angles,
@@ -213,7 +211,8 @@ class Attention(nn.Module):
             q = q * self.scale
             # (B, num_heads, N, head_dim) @ (B, num_heads, head_dim, N) -> (B, num_heads, N, N)
             attn = (q @ k.transpose(-2, -1))
-            attn = attn.softmax(dim=-1)
+            # Perform softmax in float32 for numerical stability
+            attn = attn.float().softmax(dim=-1).type_as(q)
             x = (attn @ v).transpose(1, 2).reshape(B, N, C)
 
         x = self.proj(x)
@@ -313,6 +312,10 @@ class Block(nn.Module):
             # Global attention
             x = x + self.drop_path(self.ls1(self.attn(self.norm1(x), rope=rope, h=h, w=w)))
             x = x + self.drop_path(self.ls2(self.mlp(self.norm2(x))))
+            
+        # Debug NaN check
+        if torch.isnan(x).any():
+            print(f"NAN detected in Block!")
             
         return x
 
