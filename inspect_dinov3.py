@@ -1,6 +1,7 @@
 import torch
 import sys
 import os
+import re
 
 def inspect_checkpoint(checkpoint_path):
     if not os.path.exists(checkpoint_path):
@@ -9,7 +10,7 @@ def inspect_checkpoint(checkpoint_path):
 
     print(f"Inspecting checkpoint: {checkpoint_path}")
     try:
-        checkpoint = torch.load(checkpoint_path, map_location='cpu')
+        checkpoint = torch.load(checkpoint_path, map_location='cpu', weights_only=False)
     except Exception as e:
         print(f"Failed to load checkpoint: {e}")
         return
@@ -22,28 +23,64 @@ def inspect_checkpoint(checkpoint_path):
     else:
         state_dict = checkpoint
 
-    print("\nRegister and Token Analysis:")
-    keys_of_interest = ['pos_embed', 'cls_token', 'register_tokens', 'mask_token']
+    print(f"\nTotal keys in checkpoint: {len(state_dict)}")
+
+    # Important tokens and embeddings
+    print("\n=== Special Tokens & Embeddings ===")
+    special_keys = ['cls_token', 'pos_embed', 'register_tokens', 'storage_tokens', 
+                    'mask_token', 'patch_embed', 'rope']
     
     for key in state_dict.keys():
-        for k_idx in keys_of_interest:
-            if k_idx in key:
-                print(f"{key}: {state_dict[key].shape}")
+        for special in special_keys:
+            if special in key:
+                print(f"  {key}: {state_dict[key].shape}")
+                break
 
-    # Inspect first few layers to see name structure
-    print("\nLayer Name Structure (first 10 keys):")
-    for i, key in enumerate(state_dict.keys()):
-        if i < 10:
-            print(f"  {key}")
-        else:
-            break
+    # Count transformer blocks
+    block_nums = set()
+    for key in state_dict.keys():
+        match = re.match(r'blocks\.(\d+)\.', key)
+        if match:
+            block_nums.add(int(match.group(1)))
+    
+    num_blocks = len(block_nums)
+    print(f"\n=== Architecture ===")
+    print(f"  Number of transformer blocks: {num_blocks}")
+    
+    # Get embed dim from a known layer
+    if 'blocks.0.norm1.weight' in state_dict:
+        embed_dim = state_dict['blocks.0.norm1.weight'].shape[0]
+        print(f"  Embed dimension: {embed_dim}")
+    
+    # Check attention structure
+    if 'blocks.0.attn.qkv.weight' in state_dict:
+        qkv_shape = state_dict['blocks.0.attn.qkv.weight'].shape
+        print(f"  Attention QKV weight: {qkv_shape} (fused qkv)")
+    elif 'blocks.0.attn.q_proj.weight' in state_dict:
+        q_shape = state_dict['blocks.0.attn.q_proj.weight'].shape
+        print(f"  Attention Q proj: {q_shape} (separate q/k/v)")
+    
+    # Check MLP structure
+    if 'blocks.0.mlp.w1.weight' in state_dict:
+        mlp_shape = state_dict['blocks.0.mlp.w1.weight'].shape
+        print(f"  MLP w1 weight: {mlp_shape} (SwiGLU style)")
+    elif 'blocks.0.mlp.fc1.weight' in state_dict:
+        mlp_shape = state_dict['blocks.0.mlp.fc1.weight'].shape
+        print(f"  MLP fc1 weight: {mlp_shape} (standard MLP)")
 
-    # Specifically check ViT block structure
-    print("\nViT Specifics:")
-    blocks = [k for k in state_dict.keys() if 'blocks.0.' in k]
-    if blocks:
-        print(f"Found {len([k for k in state_dict.keys() if '.blocks.' in k and '.weight' in k]) // (len(blocks)//2 if len(blocks)>2 else 1)}? layers roughly.")
-        print(f"Example block 0 key: {blocks[0]}")
+    # Key name mapping hints
+    print("\n=== Key Mapping for vit.py ===")
+    if 'storage_tokens' in state_dict:
+        shape = state_dict['storage_tokens'].shape
+        print(f"  ⚠️  Checkpoint uses 'storage_tokens' {shape}")
+        print(f"     Your vit.py uses 'register_tokens' - RENAME NEEDED in load logic!")
+    if 'register_tokens' in state_dict:
+        print(f"  ✓  'register_tokens' matches vit.py")
+        
+    # First 15 keys for reference
+    print("\n=== First 15 keys ===")
+    for i, key in enumerate(list(state_dict.keys())[:15]):
+        print(f"  {key}")
 
 if __name__ == "__main__":
     path = "models/dinov3_vitb14_pretrain.pth"
