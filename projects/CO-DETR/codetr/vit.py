@@ -47,56 +47,74 @@ class PatchEmbed(nn.Module):
 
 
 class RoPE2D(nn.Module):
-    """2D Rotary Position Embedding matching DINOv3 implementation."""
+    """2D Rotary Position Embedding matching DINOv3 implementation.
     
-    def __init__(self, dim, num_heads, base_period=10000):
+    DINOv3 uses a periods-based 2D RoPE with 16 periods for ViT-B.
+    The periods buffer is loaded from the checkpoint.
+    """
+    
+    def __init__(self, num_periods=16):
         super().__init__()
-        self.dim = dim
-        self.num_heads = num_heads
-        self.base_period = base_period
-        # Periods will be loaded from checkpoint
-        self.register_buffer("periods", torch.ones(dim // 2))
+        # Periods will be loaded from checkpoint - DINOv3 uses 16
+        self.register_buffer("periods", torch.ones(num_periods))
         
     def forward(self, x, h, w):
-        """Apply RoPE to input tensor.
+        """Apply 2D RoPE to input tensor.
         
         Args:
             x: (B, num_heads, N, head_dim) tensor
             h, w: spatial dimensions
+        Returns:
+            Rotated tensor of same shape
         """
         B, num_heads, N, head_dim = x.shape
+        device = x.device
+        dtype = x.dtype
         
-        # Generate position indices
-        pos_h = torch.arange(h, device=x.device, dtype=x.dtype)
-        pos_w = torch.arange(w, device=x.device, dtype=x.dtype)
+        # Use loaded periods from checkpoint
+        periods = self.periods.to(dtype)
+        num_periods = periods.shape[0]
+        rope_dim = num_periods * 4  # 2D * 2 (sin/cos) * num_periods
         
-        # Create 2D position grid
+        # Generate 2D position grid
+        pos_h = torch.arange(h, device=device, dtype=dtype)
+        pos_w = torch.arange(w, device=device, dtype=dtype)
         grid_h, grid_w = torch.meshgrid(pos_h, pos_w, indexing='ij')
-        positions = torch.stack([grid_h.flatten(), grid_w.flatten()], dim=-1)  # (H*W, 2)
         
-        # Compute frequencies (simplified - may need adjustment based on exact DINOv3 impl)
-        dim_half = head_dim // 2
-        freqs = 1.0 / (self.base_period ** (torch.arange(0, dim_half, 2, device=x.device, dtype=x.dtype) / dim_half))
+        # Compute angles using periods
+        # periods shape: (num_periods,)
+        angles_h = grid_h.flatten()[:, None] / periods[None, :]  # (H*W, num_periods)
+        angles_w = grid_w.flatten()[:, None] / periods[None, :]  # (H*W, num_periods)
         
-        # Apply to positions
-        angles_h = positions[:, 0:1] * freqs  # (H*W, dim_half//2)
-        angles_w = positions[:, 1:2] * freqs  # (H*W, dim_half//2)
-        angles = torch.cat([angles_h, angles_w], dim=-1)  # (H*W, dim_half)
+        # Interleave h and w angles, then compute sin/cos
+        angles = torch.stack([angles_h, angles_w], dim=-1)  # (H*W, num_periods, 2)
+        angles = angles.reshape(N, -1)  # (H*W, num_periods * 2)
         
-        cos = angles.cos()
-        sin = angles.sin()
+        cos_angles = angles.cos()  # (N, rope_dim/2)
+        sin_angles = angles.sin()  # (N, rope_dim/2)
         
-        # Reshape for broadcasting: (1, 1, N, dim_half)
-        cos = cos.unsqueeze(0).unsqueeze(0)
-        sin = sin.unsqueeze(0).unsqueeze(0)
+        # Only apply RoPE to the first rope_dim dimensions
+        if rope_dim > head_dim:
+            rope_dim = head_dim
         
-        # Split x into chunks for rotation
-        x1, x2 = x[..., :dim_half], x[..., dim_half:]
+        rope_dim_half = rope_dim // 2
+        
+        # Reshape for broadcasting: (1, 1, N, rope_dim_half)
+        cos_angles = cos_angles[:, :rope_dim_half].unsqueeze(0).unsqueeze(0)
+        sin_angles = sin_angles[:, :rope_dim_half].unsqueeze(0).unsqueeze(0)
+        
+        # Split x into RoPE part and passthrough part
+        x_rope = x[..., :rope_dim]
+        x_pass = x[..., rope_dim:]
+        
+        # Split RoPE part in half for rotation
+        x1, x2 = x_rope[..., :rope_dim_half], x_rope[..., rope_dim_half:]
         
         # Apply rotation
         x_rotated = torch.cat([
-            x1 * cos - x2 * sin,
-            x1 * sin + x2 * cos
+            x1 * cos_angles - x2 * sin_angles,
+            x1 * sin_angles + x2 * cos_angles,
+            x_pass
         ], dim=-1)
         
         return x_rotated
@@ -292,10 +310,10 @@ class ViT(BaseModule):
         # Named storage_tokens to match DINOv3 checkpoint (will be mapped in load)
         self.storage_tokens = nn.Parameter(torch.zeros(1, num_register_tokens, embed_dim)) if num_register_tokens > 0 else None
 
-        # RoPE embedding
+        # RoPE embedding - DINOv3 uses 16 periods
         self.use_rope = use_rope
         if use_rope:
-            self.rope_embed = RoPE2D(embed_dim // num_heads, num_heads)
+            self.rope_embed = RoPE2D(num_periods=16)
         else:
             self.rope_embed = None
 
