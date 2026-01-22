@@ -145,6 +145,8 @@ default_hooks = dict(
     checkpoint=dict(by_epoch=True, interval=1, max_keep_ckpts=3),
     logger=dict(type='LoggerHook', interval=50))
 
-# 6. Speed Optimizations
-env_cfg = dict(
-    cudnn_benchmark=True)  # Auto-tune CUDA kernels for faster execution
+# 6. Enable torch.compile for 20-50% speedup
+# The first epoch will be slower due to compilation, then it speeds up significantly
+compile = dict(
+    backend='inductor',
+    mode='default')
