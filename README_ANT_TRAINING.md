@@ -48,7 +48,11 @@ python mim_init.py
 Convert your YOLO-formatted dataset to the COCO format required by Co-DINO.
 
 ```bash
+# Convert YOLO to COCO
 python yolo_to_coco.py --data_dir ./dataset
+
+# IMPORTANT: Fix Windows backslashes if you converted on Windows but train on Linux
+python fix_json_paths.py
 ```
 
 ### 5. Start Training
@@ -64,6 +68,7 @@ PYTHONPATH=. python tools/train.py projects/CO-DETR/configs/codino/co_dino_5scal
 - `mim_init.py`: Internal link initializer (vital for fixing path errors).
 
 ## 🛠️ Common Fixes
+- **FileNotFoundError: .../train\\images\\...**: This happens if the COCO JSON contains Windows-style backslashes. Run `python fix_json_paths.py` on the training machine to fix them.
 - **ModuleNotFoundError: No module named 'mmcv._ext'**: This happens if MMCV was installed without CUDA. Re-run Step 2.
 - **FileNotFoundError: .../model-index.yml**: This happens if the internal links are broken. Re-run Step 3 (`python mim_init.py`).
 - **ModuleNotFoundError: No module named 'projects'**: Always ensure you are in the root directory and use `PYTHONPATH=.`.

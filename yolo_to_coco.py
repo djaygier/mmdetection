@@ -32,7 +32,7 @@ def yolo_to_coco(data_dir, split, output_json, class_names):
         
         images.append({
             "id": img_id,
-            "file_name": os.path.join(split, 'images', img_name),
+            "file_name": f"{split}/images/{img_name}",
             "width": w,
             "height": h
         })
