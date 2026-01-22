@@ -261,6 +261,18 @@ class LayerScale(nn.Module):
         return out
 
 
+class BlockWrapper(nn.Module):
+    """Wrapper to allow torch.compile to work with a sequence of blocks and extra arguments."""
+    def __init__(self, blocks):
+        super().__init__()
+        self.blocks = blocks
+        
+    def forward(self, x, rope, h, w):
+        for blk in self.blocks:
+            x = blk(x, rope=rope, h=h, w=w)
+        return x
+
+
 class Block(nn.Module):
     """Transformer block matching DINOv3 architecture."""
 
@@ -412,6 +424,9 @@ class ViT(BaseModule):
         self.apply(self._init_weights)
         self._freeze_stages()
         
+        # Block wrapper for compilation stability
+        self.block_wrapper = BlockWrapper(self.blocks)
+        
         # Optimization flag
         self._is_optimized = False
 
@@ -443,11 +458,11 @@ class ViT(BaseModule):
         else:
             print_log("torchao not found, skipping FP8", level='WARNING')
 
-        # 2. Apply torch.compile to blocks
+        # 2. Apply torch.compile to the block wrapper
         if hasattr(torch, 'compile'):
             try:
-                self.blocks = torch.compile(self.blocks, mode='default')
-                print_log("Applied torch.compile to ViT blocks", level='INFO')
+                self.block_wrapper = torch.compile(self.block_wrapper, mode='default')
+                print_log("Applied torch.compile to ViT block sequence", level='INFO')
             except Exception as e:
                 print_log(f"Failed to apply torch.compile: {e}", level='WARNING')
                 
@@ -516,9 +531,8 @@ class ViT(BaseModule):
             reg_tokens = self.storage_tokens.expand(B, -1, -1)
             x = torch.cat((x, reg_tokens), dim=1)
 
-        # Pass through transformer blocks
-        for blk in self.blocks:
-            x = blk(x, rope=self.rope_embed, h=Hp, w=Wp)
+        # Pass through transformer blocks via the wrapper
+        x = self.block_wrapper(x, self.rope_embed, Hp, Wp)
 
         # Apply final norm
         x = self.norm(x)
