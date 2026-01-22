@@ -412,34 +412,50 @@ class ViT(BaseModule):
         self.apply(self._init_weights)
         self._freeze_stages()
         
-        # Apply torch.compile to blocks if possible
+        # Optimization flag
+        self._is_optimized = False
+
+    def init_weights(self):
+        """Initialize weights (handled by init_cfg)."""
+        super().init_weights()
+
+    def _setup_optimizations(self):
+        """Apply torchao FP8 and torch.compile once after weights are loaded."""
+        if self._is_optimized:
+            return
+            
+        print_log("Setting up ViT optimizations (FP8 + torch.compile)...", level='INFO')
+        
+        # 1. Apply torchao FP8 quantization if possible
+        if HAS_TORCHAO:
+            try:
+                # Use the newer API as suggested by the warning
+                from torchao.quantization import Float8WeightOnlyConfig
+                quantize_(self, Float8WeightOnlyConfig())
+                print_log("Successfully applied FP8 quantization", level='INFO')
+            except Exception as e:
+                # Fallback to old API if needed
+                try:
+                    quantize_(self, float8_weight_only())
+                    print_log("Successfully applied FP8 quantization (old API)", level='INFO')
+                except Exception as e2:
+                    print_log(f"FP8 quantization failed: {e2}", level='ERROR')
+        else:
+            print_log("torchao not found, skipping FP8", level='WARNING')
+
+        # 2. Apply torch.compile to blocks
         if hasattr(torch, 'compile'):
             try:
                 self.blocks = torch.compile(self.blocks, mode='default')
                 print_log("Applied torch.compile to ViT blocks", level='INFO')
             except Exception as e:
                 print_log(f"Failed to apply torch.compile: {e}", level='WARNING')
-
-    def init_weights(self):
-        """Initialize weights and apply FP8 optimization after loading."""
-        super().init_weights()
-        # After weights are loaded (from init_cfg), apply FP8 quantization to the backbone
-        self.apply_fp8_optimization()
+                
+        self._is_optimized = True
 
     def apply_fp8_optimization(self):
-        """Apply torchao FP8 quantization to frozen linear layers."""
-        if not HAS_TORCHAO:
-            print_log("torchao not found, skipping FP8 optimization", level='WARNING')
-            return
-            
-        print_log("Applying float8_weight_only quantization to ViT backbone...", level='INFO')
-        # We target linear layers in blocks
-        # float8_weight_only is suitable for frozen backbones to save memory and speed up matmuls
-        try:
-            quantize_(self, float8_weight_only())
-            print_log("Successfully applied FP8 quantization", level='INFO')
-        except Exception as e:
-            print_log(f"FP8 quantization failed: {e}", level='ERROR')
+        # Trigger optimizations manually if needed
+        self._setup_optimizations()
 
     def _freeze_stages(self):
         """Freeze stages based on self.frozen_stages."""
@@ -479,6 +495,10 @@ class ViT(BaseModule):
             nn.init.constant_(m.weight, 1.0)
 
     def forward(self, x):
+        # Ensure optimizations are applied once (after weight loading)
+        if not self._is_optimized:
+             self._setup_optimizations()
+
         B, C, H, W = x.shape
         x = self.patch_embed(x)  # (B, Hp, Wp, C)
         Hp, Wp = x.shape[1], x.shape[2]
