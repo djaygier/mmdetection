@@ -424,9 +424,6 @@ class ViT(BaseModule):
         self.apply(self._init_weights)
         self._freeze_stages()
         
-        # Block wrapper for compilation stability
-        self.block_wrapper = BlockWrapper(self.blocks)
-        
         # Optimization flag
         self._is_optimized = False
 
@@ -441,26 +438,34 @@ class ViT(BaseModule):
             
         print_log("Setting up ViT optimizations (FP8 + torch.compile)...", level='INFO')
         
-        # 1. Apply torchao FP8 quantization if possible
+        # 1. Apply torchao FP8 quantization to linear layers in blocks
         if HAS_TORCHAO:
             try:
-                # Use the newer API as suggested by the warning
                 from torchao.quantization import Float8WeightOnlyConfig
-                quantize_(self, Float8WeightOnlyConfig())
-                print_log("Successfully applied FP8 quantization", level='INFO')
+                config = Float8WeightOnlyConfig()
+                
+                # Targeted quantization to avoid "tuple index" errors in full model quantization
+                count = 0
+                for m in self.blocks.modules():
+                    if isinstance(m, nn.Linear):
+                        try:
+                            quantize_(m, config)
+                            count += 1
+                        except:
+                            pass
+                print_log(f"Quantized {count} linear layers to FP8", level='INFO')
             except Exception as e:
-                # Fallback to old API if needed
-                try:
-                    quantize_(self, float8_weight_only())
-                    print_log("Successfully applied FP8 quantization (old API)", level='INFO')
-                except Exception as e2:
-                    print_log(f"FP8 quantization failed: {e2}", level='ERROR')
+                print_log(f"FP8 quantization failed: {e}", level='ERROR')
         else:
             print_log("torchao not found, skipping FP8", level='WARNING')
 
-        # 2. Apply torch.compile to the block wrapper
+        # 2. Create and compile the block wrapper
+        # We create it here so it doesn't disturb MMEngine's initial weight loading
+        self.block_wrapper = BlockWrapper(self.blocks)
+        
         if hasattr(torch, 'compile'):
             try:
+                # Compile the wrapper which handles the block sequence
                 self.block_wrapper = torch.compile(self.block_wrapper, mode='default')
                 print_log("Applied torch.compile to ViT block sequence", level='INFO')
             except Exception as e:
