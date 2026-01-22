@@ -98,8 +98,6 @@ class RoPE2D(nn.Module):
         
         rope_dim_half = rope_dim // 2
         
-        # Reshape for broadcasting: (1, 1, N, rope_dim_half)
-        # Cast back to input dtype for application
         cos_angles = cos_angles[:, :rope_dim_half].unsqueeze(0).unsqueeze(0).to(dtype)
         sin_angles = sin_angles[:, :rope_dim_half].unsqueeze(0).unsqueeze(0).to(dtype)
         
@@ -253,8 +251,6 @@ class LayerScale(nn.Module):
 
     def forward(self, x):
         out = x * self.gamma
-        if torch.isnan(out).any():
-             print(f"NAN in LayerScale (gamma={self.gamma.mean().item()})")
         return out
 
 
@@ -314,23 +310,11 @@ class Block(nn.Module):
             # Reconstruct and apply MLP
             x_spatial = torch.cat([prefix, spatial, suffix], dim=1)
             x_attn = x + self.drop_path(self.ls1(x_spatial))
-            if torch.isnan(x_attn).any():
-                print(f"NAN in Block (Windowed) after Attn")
-            
             x = x_attn + self.drop_path(self.ls2(self.mlp(self.norm2(x_attn))))
-            if torch.isnan(x).any():
-                print(f"NAN in Block (Windowed) after MLP")
         else:
             # Global attention
             x_attn = x + self.drop_path(self.ls1(self.attn(self.norm1(x), rope=rope, h=h, w=w)))
-            if torch.isnan(x_attn).any():
-                print(f"NAN in Block (Global) after Attn")
-                
             x = x_attn + self.drop_path(self.ls2(self.mlp(self.norm2(x_attn))))
-            
-        # Debug NaN check
-        if torch.isnan(x).any():
-            print(f"NAN in Block Final")
             
         return x
 
@@ -438,6 +422,11 @@ class ViT(BaseModule):
                 m.eval()
                 for param in m.parameters():
                     param.requires_grad = False
+        
+        if self.frozen_stages >= len(self.blocks):
+            self.norm.eval()
+            for param in self.norm.parameters():
+                param.requires_grad = False
 
     def train(self, mode=True):
         """Override train to keep frozen stages in eval mode."""
@@ -454,9 +443,6 @@ class ViT(BaseModule):
             nn.init.constant_(m.weight, 1.0)
 
     def forward(self, x):
-        if torch.isnan(x).any():
-            print("NAN in Input Image!")
-            
         B, C, H, W = x.shape
         x = self.patch_embed(x)  # (B, Hp, Wp, C)
         Hp, Wp = x.shape[1], x.shape[2]

@@ -50,6 +50,7 @@ model = dict(
         use_rope=True,  # DINOv3 uses RoPE
         init_values=1e-5,  # LayerScale init
         num_register_tokens=4,  # DINOv3 uses 4 register tokens
+        frozen_stages=12,  # Freeze all 12 layers of ViT-B
         init_cfg=dict(type='Pretrained', checkpoint='models/dinov3_vitb14_pretrain.pth')),
     neck=dict(
         type='SFP',
