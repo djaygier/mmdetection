@@ -21,13 +21,6 @@ except:
     from timm.models.layers import DropPath, trunc_normal_
 
 try:
-    import torchao
-    from torchao.quantization import float8_weight_only, quantize_
-    HAS_TORCHAO = True
-except ImportError:
-    HAS_TORCHAO = False
-
-try:
     import xformers.ops as xops
     HAS_XFORMERS = True
 except:
@@ -261,18 +254,6 @@ class LayerScale(nn.Module):
         return out
 
 
-class BlockWrapper(nn.Module):
-    """Wrapper to allow torch.compile to work with a sequence of blocks and extra arguments."""
-    def __init__(self, blocks):
-        super().__init__()
-        self.blocks = blocks
-        
-    def forward(self, x, rope, h, w):
-        for blk in self.blocks:
-            x = blk(x, rope=rope, h=h, w=w)
-        return x
-
-
 class Block(nn.Module):
     """Transformer block matching DINOv3 architecture."""
 
@@ -423,59 +404,6 @@ class ViT(BaseModule):
 
         self.apply(self._init_weights)
         self._freeze_stages()
-        
-        # Optimization flag
-        self._is_optimized = False
-
-    def init_weights(self):
-        """Initialize weights (handled by init_cfg)."""
-        super().init_weights()
-
-    def _setup_optimizations(self):
-        """Apply torchao FP8 and torch.compile once after weights are loaded."""
-        if self._is_optimized:
-            return
-            
-        print_log("Setting up ViT optimizations (FP8 + torch.compile)...", level='INFO')
-        
-        # 1. Apply torchao FP8 quantization to linear layers in blocks
-        if HAS_TORCHAO:
-            try:
-                from torchao.quantization import Float8WeightOnlyConfig
-                config = Float8WeightOnlyConfig()
-                
-                # Targeted quantization to avoid "tuple index" errors in full model quantization
-                count = 0
-                for m in self.blocks.modules():
-                    if isinstance(m, nn.Linear):
-                        try:
-                            quantize_(m, config)
-                            count += 1
-                        except:
-                            pass
-                print_log(f"Quantized {count} linear layers to FP8", level='INFO')
-            except Exception as e:
-                print_log(f"FP8 quantization failed: {e}", level='ERROR')
-        else:
-            print_log("torchao not found, skipping FP8", level='WARNING')
-
-        # 2. Create and compile the block wrapper
-        # We create it here so it doesn't disturb MMEngine's initial weight loading
-        self.block_wrapper = BlockWrapper(self.blocks)
-        
-        if hasattr(torch, 'compile'):
-            try:
-                # Compile the wrapper which handles the block sequence
-                self.block_wrapper = torch.compile(self.block_wrapper, mode='default')
-                print_log("Applied torch.compile to ViT block sequence", level='INFO')
-            except Exception as e:
-                print_log(f"Failed to apply torch.compile: {e}", level='WARNING')
-                
-        self._is_optimized = True
-
-    def apply_fp8_optimization(self):
-        # Trigger optimizations manually if needed
-        self._setup_optimizations()
 
     def _freeze_stages(self):
         """Freeze stages based on self.frozen_stages."""
@@ -515,10 +443,6 @@ class ViT(BaseModule):
             nn.init.constant_(m.weight, 1.0)
 
     def forward(self, x):
-        # Ensure optimizations are applied once (after weight loading)
-        if not self._is_optimized:
-             self._setup_optimizations()
-
         B, C, H, W = x.shape
         x = self.patch_embed(x)  # (B, Hp, Wp, C)
         Hp, Wp = x.shape[1], x.shape[2]
@@ -536,8 +460,9 @@ class ViT(BaseModule):
             reg_tokens = self.storage_tokens.expand(B, -1, -1)
             x = torch.cat((x, reg_tokens), dim=1)
 
-        # Pass through transformer blocks via the wrapper
-        x = self.block_wrapper(x, self.rope_embed, Hp, Wp)
+        # Pass through transformer blocks
+        for blk in self.blocks:
+            x = blk(x, rope=self.rope_embed, h=Hp, w=Wp)
 
         # Apply final norm
         x = self.norm(x)
