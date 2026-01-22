@@ -10,18 +10,20 @@ metainfo = {
 num_classes = 1
 
 # 2. Model setting
-# We need to update num_classes in all heads
+# Update num_classes in all heads using nested dict override syntax.
+# This ensures we do NOT delete the bbox_roi_extractor and other
+# required fields during inheritance.
 model = dict(
     query_head=dict(num_classes=num_classes),
+    # Override just the num_classes inside the nested bbox_head of roi_head[0]
     roi_head=[
         dict(
-            type='CoStandardRoIHead',
-            bbox_head=dict(num_classes=num_classes))
+            bbox_head=dict(
+                num_classes=num_classes))
     ],
+    # Override just the num_classes inside bbox_head[0]
     bbox_head=[
-        dict(
-            type='CoATSSHead',
-            num_classes=num_classes)
+        dict(num_classes=num_classes)
     ]
 )
 
@@ -50,9 +52,6 @@ val_evaluator = dict(ann_file=data_root + 'valid.json')
 test_evaluator = val_evaluator
 
 # 4. Learning rate setting
-# Co-DINO is sensitive to LR. 1e-4 is the default for 16 GPUs.
-# If training on 1 GPU, you might want to scale it down,
-# but AdamW usually handles it better.
 optim_wrapper = dict(optimizer=dict(lr=1e-4))
 
 # 5. Checkpoint setting
@@ -62,5 +61,3 @@ default_hooks = dict(
 
 # 6. Load Pretrained Weights
 # load_from is already set in the base config to the o365tococo checkpoint.
-# If you want to change it, uncomment the line below:
-# load_from = 'https://download.openmmlab.com/mmdetection/v3.0/codetr/co_dino_5scale_swin_large_16e_o365tococo-614254c9.pth'
