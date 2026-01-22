@@ -113,8 +113,8 @@ test_pipeline = [
 ]
 
 train_dataloader = dict(
-    batch_size=6,  # Increased for RTX 5090 (prev. 4)
-    num_workers=12,  # Increased to match higher batch size
+    batch_size=16,  # Matches original total batch size (16 GPUs x 1)
+    num_workers=16,
     persistent_workers=True,
     dataset=dict(
         data_root=data_root,
