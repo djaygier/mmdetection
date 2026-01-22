@@ -73,6 +73,8 @@ class RoPE2D(nn.Module):
         
         # Use loaded periods from checkpoint
         periods = self.periods.to(dtype)
+        # Avoid division by zero
+        periods = torch.clamp(periods, min=1e-6)
         num_periods = periods.shape[0]
         rope_dim = num_periods * 4  # 2D * 2 (sin/cos) * num_periods
         
@@ -172,26 +174,44 @@ class Attention(nn.Module):
         
         # Apply RoPE if provided
         if rope is not None and h is not None and w is not None:
-            # Only apply to spatial tokens, not cls/register tokens
-            num_special = N - h * w
-            if num_special > 0:
-                q_spatial = rope(q[:, :, num_special:], h, w)
-                k_spatial = rope(k[:, :, num_special:], h, w)
-                q = torch.cat([q[:, :, :num_special], q_spatial], dim=2)
-                k = torch.cat([k[:, :, :num_special], k_spatial], dim=2)
-            else:
-                q = rope(q, h, w)
-                k = rope(k, h, w)
+            # Calculate number of extra tokens
+            num_spatial = h * w
+            # cls token is usually at index 0
+            # spatial tokens are from index 1 to 1 + num_spatial
+            # storage tokens are after spatial tokens
+            
+            # Extract spatial part for RoPE
+            # Assuming [cls, spatial..., storage...] layout from ViT.forward
+            q_prefix = q[:, :, :1]
+            q_spatial = q[:, :, 1:1+num_spatial]
+            q_suffix = q[:, :, 1+num_spatial:]
+            
+            k_prefix = k[:, :, :1]
+            k_spatial = k[:, :, 1:1+num_spatial]
+            k_suffix = k[:, :, 1+num_spatial:]
+
+            # Apply RoPE to spatial tokens only
+            q_spatial = rope(q_spatial, h, w)
+            k_spatial = rope(k_spatial, h, w)
+            
+            # Reconstruct
+            q = torch.cat([q_prefix, q_spatial, q_suffix], dim=2)
+            k = torch.cat([k_prefix, k_spatial, k_suffix], dim=2)
 
         if self.xattn:
             # xformers expects (B, N, num_heads, head_dim)
             q = q.permute(0, 2, 1, 3)
             k = k.permute(0, 2, 1, 3)
             v = v.permute(0, 2, 1, 3)
+            # Ensure contiguous for xformers
+            q = q.contiguous()
+            k = k.contiguous()
+            v = v.contiguous()
             x = xops.memory_efficient_attention(q, k, v)
             x = x.reshape(B, N, C)
         else:
             q = q * self.scale
+            # (B, num_heads, N, head_dim) @ (B, num_heads, head_dim, N) -> (B, num_heads, N, N)
             attn = (q @ k.transpose(-2, -1))
             attn = attn.softmax(dim=-1)
             x = (attn @ v).transpose(1, 2).reshape(B, N, C)
@@ -258,8 +278,42 @@ class Block(nn.Module):
             rope: optional RoPE module
             h, w: spatial dimensions
         """
-        x = x + self.drop_path(self.ls1(self.attn(self.norm1(x), rope=rope, h=h, w=w)))
-        x = x + self.drop_path(self.ls2(self.mlp(self.norm2(x))))
+        if self.window_size > 0:
+            # Extract parts
+            num_prefix = 1 # cls
+            num_spatial = h * w
+            
+            prefix = x[:, :num_prefix, :]
+            spatial = x[:, num_prefix:num_prefix + num_spatial, :]
+            suffix = x[:, num_prefix + num_spatial:, :]
+            
+            # Reshape spatial for windowing
+            spatial = spatial.reshape(x.shape[0], h, w, x.shape[-1])
+            spatial, pad_hw = window_partition(spatial, self.window_size)
+            
+            # Apply attention on windows (RoPE usually not applied in small windows or needs adjustment)
+            # For simplicity with CO-DETR, we'll skip RoPE in windowed blocks if it's too complex, 
+            # but let's try to keep it if h/w are passed as window_size
+            B_win = spatial.shape[0]
+            spatial = spatial.reshape(B_win, -1, spatial.shape[-1])
+            
+            # Attention within window
+            # Note: rope is skipped here because spatial positions change within windows
+            spatial = self.attn(self.norm1(spatial)) 
+            
+            # Unpartition
+            spatial = window_unpartition(spatial, self.window_size, pad_hw, (h, w))
+            spatial = spatial.reshape(x.shape[0], num_spatial, -1)
+            
+            # Reconstruct and apply MLP
+            x_spatial = torch.cat([prefix, spatial, suffix], dim=1)
+            x = x + self.drop_path(self.ls1(x_spatial)) # Note: norm already applied inside
+            x = x + self.drop_path(self.ls2(self.mlp(self.norm2(x))))
+        else:
+            # Global attention
+            x = x + self.drop_path(self.ls1(self.attn(self.norm1(x), rope=rope, h=h, w=w)))
+            x = x + self.drop_path(self.ls2(self.mlp(self.norm2(x))))
+            
         return x
 
 
