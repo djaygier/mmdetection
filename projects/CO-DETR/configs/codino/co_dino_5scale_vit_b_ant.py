@@ -40,15 +40,17 @@ model = dict(
         embed_dim=768,  # ViT-B
         depth=12,  # ViT-B
         num_heads=12,  # ViT-B
-        mlp_ratio=4,  # Standard MLP (not SwiGLU)
+        mlp_ratio=4.0,  # Standard MLP ratio
         drop_path_rate=0.1,
-        window_size=16,  # 640/16/2.5 ~ 16
+        window_size=16,
         window_block_indexes=window_block_indexes,
-        residual_block_indexes=residual_block_indexes,
         qkv_bias=True,
         use_act_checkpoint=True,
         xattn=False,  # Set True if you have xformers installed
-        init_cfg=dict(type='Pretrained', checkpoint='models/dinov3_vitb14_pretrain.pth')),  # Point to your DINOv3 checkpoint
+        use_rope=True,  # DINOv3 uses RoPE
+        init_values=1e-5,  # LayerScale init
+        num_register_tokens=4,  # DINOv3 uses 4 register tokens
+        init_cfg=dict(type='Pretrained', checkpoint='models/dinov3_vitb14_pretrain.pth')),
     neck=dict(
         type='SFP',
         in_channels=[768],  # ViT-B embed_dim
