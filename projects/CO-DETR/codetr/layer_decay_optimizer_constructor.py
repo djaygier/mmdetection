@@ -24,7 +24,7 @@ def get_layer_id_for_vit(var_name, max_layer_id):
 
 
 @OPTIM_WRAPPER_CONSTRUCTORS.register_module()
-class LearningRateDecayOptimizerConstructor(DefaultOptimWrapperConstructor):
+class ViTLearningRateDecayOptimizerConstructor(DefaultOptimWrapperConstructor):
     """Optimizer constructor with layer-wise learning rate decay for ViT."""
 
     def add_params(self, params, module, prefix='', is_dcn_module=None):
@@ -34,7 +34,7 @@ class LearningRateDecayOptimizerConstructor(DefaultOptimWrapperConstructor):
         decay_rate = self.paramwise_cfg.get('decay_rate')
         decay_type = self.paramwise_cfg.get('decay_type', 'layer_wise')
 
-        print_log(f'Build LearningRateDecayOptimizerConstructor {decay_type} {decay_rate} - {num_layers}')
+        print_log(f'Build ViTLearningRateDecayOptimizerConstructor {decay_type} {decay_rate} - {num_layers}')
 
         weight_decay = self.base_wd
         for name, param in module.named_parameters():
@@ -89,12 +89,12 @@ class LearningRateDecayOptimizerConstructor(DefaultOptimWrapperConstructor):
 
 
 @OPTIM_WRAPPER_CONSTRUCTORS.register_module()
-class LayerDecayOptimizerConstructor(LearningRateDecayOptimizerConstructor):
-    """Alias for LearningRateDecayOptimizerConstructor with layer decay config translation."""
+class ViTLayerDecayOptimizerConstructor(ViTLearningRateDecayOptimizerConstructor):
+    """Alias for ViTLearningRateDecayOptimizerConstructor with layer decay config translation."""
 
     def __init__(self, optim_wrapper_cfg, paramwise_cfg=None):
         if paramwise_cfg is not None:
             paramwise_cfg.setdefault('decay_type', 'layer_wise')
             if 'layer_decay_rate' in paramwise_cfg:
                 paramwise_cfg['decay_rate'] = paramwise_cfg.pop('layer_decay_rate')
-        super(LayerDecayOptimizerConstructor, self).__init__(optim_wrapper_cfg, paramwise_cfg)
+        super(ViTLayerDecayOptimizerConstructor, self).__init__(optim_wrapper_cfg, paramwise_cfg)
