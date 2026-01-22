@@ -11,8 +11,6 @@ num_classes = 1
 
 # 2. Model setting
 # We must re-define the heads to update num_classes. 
-# We copy the structure from the base co_dino_5scale_r50_lsj_8xb2_1x_coco.py
-# but update num_classes to 1.
 num_dec_layer = 6
 loss_lambda = 2.0
 
@@ -81,32 +79,61 @@ model = dict(
     ]
 )
 
+# 2.1 Enable FP16 (Mixed Precision)
+optim_wrapper = dict(
+    type='OptimWrapper',
+    optimizer=dict(type='AdamW', lr=1e-4, weight_decay=0.0001),
+    clip_grad=dict(max_norm=0.1, norm_type=2),
+    paramwise_cfg=dict(custom_keys={'backbone': dict(lr_mult=0.1)}),
+    loss_scale='dynamic')
+
 # 3. Dataset setting
 data_root = 'dataset/'
+image_size = (640, 640)
+
+# Simplified pipeline for speed: Fixed 640 resolution
+train_pipeline = [
+    dict(type='LoadImageFromFile'),
+    dict(type='LoadAnnotations', with_bbox=True),
+    dict(type='Resize', scale=image_size, keep_ratio=True),
+    dict(type='RandomFlip', prob=0.5),
+    dict(type='Pad', size=image_size, pad_val=dict(img=(114, 114, 114))),
+    dict(type='PackDetInputs')
+]
+
+test_pipeline = [
+    dict(type='LoadImageFromFile'),
+    dict(type='Resize', scale=image_size, keep_ratio=True),
+    dict(type='Pad', size=image_size, pad_val=dict(img=(114, 114, 114))),
+    dict(type='LoadAnnotations', with_bbox=True),
+    dict(
+        type='PackDetInputs',
+        meta_keys=('img_id', 'img_path', 'ori_shape', 'img_shape',
+                   'scale_factor'))
+]
 
 train_dataloader = dict(
-    batch_size=1,  # Adjust based on your GPU memory
+    batch_size=1,  # Reverted to original batch size
     num_workers=4,
     dataset=dict(
         data_root=data_root,
         metainfo=metainfo,
         ann_file='train.json',
-        data_prefix=dict(img='')))
+        data_prefix=dict(img=''),
+        pipeline=train_pipeline))
 
 val_dataloader = dict(
     dataset=dict(
         data_root=data_root,
         metainfo=metainfo,
         ann_file='valid.json',
-        data_prefix=dict(img='')))
+        data_prefix=dict(img=''),
+        pipeline=test_pipeline))
 
 test_dataloader = val_dataloader
 
 val_evaluator = dict(ann_file=data_root + 'valid.json')
 test_evaluator = val_evaluator
-
-# 4. Learning rate setting
-optim_wrapper = dict(optimizer=dict(lr=1e-4))
 
 # 5. Checkpoint setting
 default_hooks = dict(
