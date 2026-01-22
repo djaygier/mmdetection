@@ -114,10 +114,8 @@ test_pipeline = [
 
 train_dataloader = dict(
     batch_size=8,  # Matches original total batch size (16 GPUs x 1)
-    num_workers=32,
+    num_workers=20,
     persistent_workers=True,
-    pin_memory=True,  # Faster CPU->GPU transfer
-    prefetch_factor=4,  # Pre-load more batches
     dataset=dict(
         data_root=data_root,
         metainfo=metainfo,
@@ -144,9 +142,3 @@ test_evaluator = val_evaluator
 default_hooks = dict(
     checkpoint=dict(by_epoch=True, interval=1, max_keep_ckpts=3),
     logger=dict(type='LoggerHook', interval=50))
-
-# 6. Enable torch.compile for 20-50% speedup
-# The first epoch will be slower due to compilation, then it speeds up significantly
-compile = dict(
-    backend='inductor',
-    mode='default')
