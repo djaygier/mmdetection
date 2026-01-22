@@ -7,12 +7,12 @@ from .transformer import (CoDinoTransformer, DetrTransformerDecoderLayer,
                           DetrTransformerEncoder, DinoTransformerDecoder)
 from .vit import ViT
 from .sfp import SFP
-from .layer_decay_optimizer_constructor import (LearningRateDecayOptimizerConstructor,
-                                                 LayerDecayOptimizerConstructor)
+from .layer_decay_optimizer_constructor import (ViTLearningRateDecayOptimizerConstructor,
+                                                 ViTLayerDecayOptimizerConstructor)
 
 __all__ = [
     'CoDETR', 'CoDinoTransformer', 'DinoTransformerDecoder', 'CoDINOHead',
     'CoATSSHead', 'CoStandardRoIHead', 'DetrTransformerEncoder',
-    'DetrTransformerDecoderLayer', 'ViT', 'SFP', 'LearningRateDecayOptimizerConstructor',
-    'LayerDecayOptimizerConstructor'
+    'DetrTransformerDecoderLayer', 'ViT', 'SFP', 'ViTLearningRateDecayOptimizerConstructor',
+    'ViTLayerDecayOptimizerConstructor'
 ]
