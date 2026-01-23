@@ -306,7 +306,7 @@ test_pipeline = [
 ]
 
 train_dataloader = dict(
-    batch_size=5,
+    batch_size=4,  # Effective batch size = 16 with accumulative_counts=4
     num_workers=20,
     persistent_workers=True,
     dataset=dict(
@@ -337,12 +337,13 @@ optim_wrapper = dict(
     type='AmpOptimWrapper',
     optimizer=dict(type='AdamW', lr=2e-4, weight_decay=0.01),
     clip_grad=dict(max_norm=0.1, norm_type=2),
+    accumulative_counts=4,  # Gradient accumulation: 4 x batch_size=4 = effective batch 16
     constructor='ViTLearningRateDecayOptimizerConstructor',
     paramwise_cfg=dict(
         num_layers=24,
         decay_rate=0.98,  # Gentle LLRD
         decay_type='layer_wise',
-        custom_keys={'backbone': dict(lr_mult=0.05)}  # 2e-4 * 0.05 = 1e-5 for backbone
+        custom_keys={'backbone': dict(lr_mult=0.1)}  # 2e-4 * 0.1 = 2e-5 for backbone
     ),
     loss_scale='dynamic')
 
