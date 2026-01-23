@@ -2,12 +2,12 @@ _base_ = './co_dino_5scale_swin_l_16xb1_16e_o365tococo.py'
 
 # 1. Classes setting
 metainfo = {
-    'classes': ('Ant', ),
+    'classes': ('ant', 'cocoon', 'egg', 'larva', 'pupa', 'queen'),
     'palette': [
-        (220, 20, 60),
+        (0, 139, 139), (255, 165, 0), (128, 0, 128), (0, 255, 0), (255, 20, 147), (0, 0, 255)
     ]
 }
-num_classes = 1
+num_classes = 6
 
 # 2. Model setting
 # We must re-define the heads to update num_classes. 
