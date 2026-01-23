@@ -332,12 +332,18 @@ val_evaluator = dict(ann_file=data_root + 'valid.json')
 test_evaluator = val_evaluator
 
 # 4. Optimizer with Layer-wise LR Decay (important for ViT)
+# Head LR: 2e-4, Backbone LR: 1e-5 (0.05x multiplier), LLRD: 0.98
 optim_wrapper = dict(
     type='AmpOptimWrapper',
     optimizer=dict(type='AdamW', lr=2e-4, weight_decay=0.01),
     clip_grad=dict(max_norm=0.1, norm_type=2),
     constructor='ViTLearningRateDecayOptimizerConstructor',
-    paramwise_cfg=dict(num_layers=24, decay_rate=0.8, decay_type='layer_wise'),  # 24 layers for ViT-L
+    paramwise_cfg=dict(
+        num_layers=24,
+        decay_rate=0.98,  # Gentle LLRD
+        decay_type='layer_wise',
+        custom_keys={'backbone': dict(lr_mult=0.05)}  # 2e-4 * 0.05 = 1e-5 for backbone
+    ),
     loss_scale='dynamic')
 
 # 5. Schedule (36 epochs)
