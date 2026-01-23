@@ -13,10 +13,12 @@ metainfo = {
 }
 num_classes = 1
 
-# 2. ViT-B Backbone (DINOv3 Base) + SFP Neck
-# Window block indexes for ViT-B (12 layers)
-window_block_indexes = (
-    list(range(0, 3)) + list(range(4, 7)) + list(range(8, 11)))
+# 2. ViT-L Backbone (DINOv3 Large) + SFP Neck
+# Window block indexes for ViT-L (24 layers)
+# Global attention every 6 layers: 5, 11, 17, 23
+window_block_indexes = [
+    i for i in range(24) if i not in [5, 11, 17, 23]
+]
 residual_block_indexes = []
 
 num_dec_layer = 6
@@ -37,9 +39,9 @@ model = dict(
         img_size=640,  # Your image size
         pretrain_img_size=518,  # DINOv3 pretrain size
         patch_size=16,
-        embed_dim=768,  # ViT-B
-        depth=12,  # ViT-B
-        num_heads=12,  # ViT-B
+        embed_dim=1024,  # ViT-L
+        depth=24,  # ViT-L
+        num_heads=16,  # ViT-L
         mlp_ratio=4.0,  # Standard MLP ratio
         drop_path_rate=0.1,
         window_size=16,
@@ -51,10 +53,10 @@ model = dict(
         init_values=1e-5,  # LayerScale init
         num_register_tokens=4,  # DINOv3 uses 4 register tokens
         frozen_stages=-1,  # Unfreeze all layers for full fine-tuning
-        init_cfg=dict(type='Pretrained', checkpoint='models/dinov3_vitb14_pretrain.pth')),
+        init_cfg=dict(type='Pretrained', checkpoint='models/dinov3_vitl14_pretrain.pth')),
     neck=dict(
         type='SFP',
-        in_channels=[768],  # ViT-B embed_dim
+        in_channels=[1024],  # ViT-L embed_dim
         out_channels=256,
         num_outs=5,
         use_p2=True,
@@ -335,11 +337,11 @@ optim_wrapper = dict(
     optimizer=dict(type='AdamW', lr=2e-4, weight_decay=0.01),
     clip_grad=dict(max_norm=0.1, norm_type=2),
     constructor='ViTLearningRateDecayOptimizerConstructor',
-    paramwise_cfg=dict(num_layers=12, decay_rate=0.8, decay_type='layer_wise'),  # 12 layers for ViT-B
+    paramwise_cfg=dict(num_layers=24, decay_rate=0.8, decay_type='layer_wise'),  # 24 layers for ViT-L
     loss_scale='dynamic')
 
-# 5. Schedule
-max_epochs = 12
+# 5. Schedule (36 epochs)
+max_epochs = 36
 train_cfg = dict(type='EpochBasedTrainLoop', max_epochs=max_epochs, val_interval=1)
 
 param_scheduler = [
@@ -348,7 +350,7 @@ param_scheduler = [
         begin=0,
         end=max_epochs,
         by_epoch=True,
-        milestones=[7],
+        milestones=[27, 33],
         gamma=0.1)
 ]
 
