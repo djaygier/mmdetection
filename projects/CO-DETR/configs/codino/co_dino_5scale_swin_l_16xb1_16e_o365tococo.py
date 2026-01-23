@@ -103,6 +103,9 @@ optim_wrapper = dict(optimizer=dict(lr=1e-4))
 
 max_epochs = 16
 train_cfg = dict(max_epochs=max_epochs)
+resume = True
+load_from = '/workspace/mmdetection/work_dirs/co_dino_5scale_swin_l_ant/epoch_6.pth'
+work_dir = '/workspace/mmdetection/work_dirs/co_dino_5scale_swin_l_ant'
 
 param_scheduler = [
     dict(
@@ -110,6 +113,6 @@ param_scheduler = [
         begin=0,
         end=max_epochs,
         by_epoch=True,
-        milestones=[8],
+        milestones=[6],
         gamma=0.1)
 ]
