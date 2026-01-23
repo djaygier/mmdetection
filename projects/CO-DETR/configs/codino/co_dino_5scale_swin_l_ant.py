@@ -107,6 +107,7 @@ optim_wrapper = dict(
     type='AmpOptimWrapper',
     optimizer=dict(type='AdamW', lr=1e-4, weight_decay=0.0001),
     clip_grad=dict(max_norm=0.1, norm_type=2),
+    accumulative_counts=4,  # Gradient accumulation: 4 x batch_size=4 = effective batch 16
     paramwise_cfg=dict(custom_keys={'backbone': dict(lr_mult=0.1)}),
     loss_scale='dynamic')
 
@@ -136,7 +137,7 @@ test_pipeline = [
 ]
 
 train_dataloader = dict(
-    batch_size=8,  # Matches original total batch size (16 GPUs x 1)
+    batch_size=4,  # Effective batch size = 16 with accumulative_counts=4
     num_workers=20,
     persistent_workers=True,
     dataset=dict(
