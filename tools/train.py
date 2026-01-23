@@ -14,8 +14,9 @@ import torch
 import numpy
 if hasattr(torch.serialization, 'add_safe_globals'):
     from mmengine.logging.history_buffer import HistoryBuffer
-    from mmengine.structures import PixelData, InstanceData, DetDataSample
-    # Add common mmengine and numpy classes/functions to the safe list
+    from mmengine.structures import PixelData, InstanceData
+    from mmdet.structures import DetDataSample
+    # Add common mmengine, mmdet and numpy classes/functions to the safe list
     torch.serialization.add_safe_globals([
         HistoryBuffer, PixelData, InstanceData, DetDataSample,
         numpy._core.multiarray._reconstruct, numpy.ndarray, numpy.dtype
