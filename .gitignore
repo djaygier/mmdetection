@@ -125,3 +125,7 @@ work_dirs/
 
 dataset/**
 dataset.zip
+*.zip
+*.mp4
+*.pt
+*.pth

@@ -112,16 +112,110 @@ optim_wrapper = dict(
     loss_scale='dynamic')
 
 # 3. Dataset setting
-data_root = 'dataset/'
-image_size = (640, 640)
+data_root = 'Ant brood.v10i.coco/'
+image_size = (1024, 1024)
 
-# Simplified pipeline for speed: Fixed 640 resolution
+# Multi-scale and advanced augmentation pipeline
 train_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(type='LoadAnnotations', with_bbox=True),
-    dict(type='Resize', scale=image_size, keep_ratio=True),
     dict(type='RandomFlip', prob=0.5),
-    dict(type='Pad', size=image_size, pad_val=dict(img=(114, 114, 114))),
+    dict(
+        type='PhotoMetricDistortion',
+        brightness_delta=32,
+        contrast_range=(0.5, 1.5),
+        saturation_range=(0.5, 1.5),
+        hue_delta=18),
+    dict(
+        type='Albu',
+        transforms=[
+            dict(
+                type='ShiftScaleRotate',
+                shift_limit=0.0625,
+                scale_limit=0.1,
+                rotate_limit=30,
+                interpolation=1,
+                p=0.5),
+            dict(
+                type='RandomBrightnessContrast',
+                brightness_limit=[0.1, 0.3],
+                contrast_limit=[0.1, 0.3],
+                p=0.2),
+            dict(
+                type='OneOf',
+                transforms=[
+                    dict(
+                        type='RGBShift',
+                        r_shift_limit=10,
+                        g_shift_limit=10,
+                        b_shift_limit=10,
+                        p=1.0),
+                    dict(
+                        type='HueSaturationValue',
+                        hue_shift_limit=20,
+                        sat_shift_limit=30,
+                        val_shift_limit=20,
+                        p=1.0)
+                ],
+                p=0.1),
+            dict(type='Blur', blur_limit=3, p=0.1),
+        ],
+        bbox_params=dict(
+            type='BboxParams',
+            format='coco',
+            label_fields=['gt_bboxes_labels'],
+            min_visibility=0.0,
+            filter_lost_elements=True),
+        keymap={
+            'img': 'image',
+            'gt_bboxes': 'bboxes'
+        },
+        skip_img_without_anno=True),
+    dict(
+        type='RandomChoice',
+        transforms=[
+            [
+                dict(
+                    type='RandomChoiceResize',
+                    scales=[(480, 2048), (512, 2048), (544, 2048), (576, 2048),
+                            (608, 2048), (640, 2048), (672, 2048), (704, 2048),
+                            (736, 2048), (768, 2048), (800, 2048), (832, 2048),
+                            (864, 2048), (896, 2048), (928, 2048), (960, 2048),
+                            (992, 2048), (1024, 2048), (1056, 2048),
+                            (1088, 2048), (1120, 2048), (1152, 2048),
+                            (1184, 2048), (1216, 2048), (1248, 2048),
+                            (1280, 2048), (1312, 2048), (1344, 2048),
+                            (1376, 2048), (1408, 2048), (1440, 2048),
+                            (1472, 2048), (1504, 2048), (1536, 2048)],
+                    keep_ratio=True)
+            ],
+            [
+                dict(
+                    type='RandomChoiceResize',
+                    # The radio of all image in train dataset < 7
+                    # follow the original implement
+                    scales=[(400, 4200), (500, 4200), (600, 4200)],
+                    keep_ratio=True),
+                dict(
+                    type='RandomCrop',
+                    crop_type='absolute_range',
+                    crop_size=(384, 600),
+                    allow_negative_crop=True),
+                dict(
+                    type='RandomChoiceResize',
+                    scales=[(480, 2048), (512, 2048), (544, 2048), (576, 2048),
+                            (608, 2048), (640, 2048), (672, 2048), (704, 2048),
+                            (736, 2048), (768, 2048), (800, 2048), (832, 2048),
+                            (864, 2048), (896, 2048), (928, 2048), (960, 2048),
+                            (992, 2048), (1024, 2048), (1056, 2048),
+                            (1088, 2048), (1120, 2048), (1152, 2048),
+                            (1184, 2048), (1216, 2048), (1248, 2048),
+                            (1280, 2048), (1312, 2048), (1344, 2048),
+                            (1376, 2048), (1408, 2048), (1440, 2048),
+                            (1472, 2048), (1504, 2048), (1536, 2048)],
+                    keep_ratio=True)
+            ]
+        ]),
     dict(type='PackDetInputs')
 ]
 
@@ -143,8 +237,8 @@ train_dataloader = dict(
     dataset=dict(
         data_root=data_root,
         metainfo=metainfo,
-        ann_file='train.json',
-        data_prefix=dict(img=''),
+        ann_file='train/_annotations.coco.json',
+        data_prefix=dict(img='train/'),
         pipeline=train_pipeline))
 
 val_dataloader = dict(
@@ -153,13 +247,13 @@ val_dataloader = dict(
     dataset=dict(
         data_root=data_root,
         metainfo=metainfo,
-        ann_file='valid.json',
-        data_prefix=dict(img=''),
+        ann_file='valid/_annotations.coco.json',
+        data_prefix=dict(img='valid/'),
         pipeline=test_pipeline))
 
 test_dataloader = val_dataloader
 
-val_evaluator = dict(ann_file=data_root + 'valid.json')
+val_evaluator = dict(ann_file=data_root + 'valid/_annotations.coco.json')
 test_evaluator = val_evaluator
 
 # 5. Checkpoint setting
