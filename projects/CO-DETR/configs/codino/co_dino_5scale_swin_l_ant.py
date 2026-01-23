@@ -142,3 +142,20 @@ test_evaluator = val_evaluator
 default_hooks = dict(
     checkpoint=dict(by_epoch=True, interval=1, max_keep_ckpts=3),
     logger=dict(type='LoggerHook', interval=50))
+# 6. Schedule
+max_epochs = 12
+train_cfg = dict(type='EpochBasedTrainLoop', max_epochs=max_epochs, val_interval=1)
+
+param_scheduler = [
+    dict(
+        type='MultiStepLR',
+        begin=0,
+        end=max_epochs,
+        by_epoch=True,
+        milestones=[6],
+        gamma=0.1)
+]
+
+# 7. Resume setting
+load_from = '/workspace/mmdetection/work_dirs/co_dino_5scale_swin_l_ant/epoch_6.pth'
+resume = True
