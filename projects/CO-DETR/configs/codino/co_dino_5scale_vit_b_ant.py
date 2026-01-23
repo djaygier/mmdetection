@@ -81,7 +81,7 @@ model = dict(
         loss_bbox=dict(type='L1Loss', loss_weight=1.0 * num_dec_layer * loss_lambda)),
     query_head=dict(
         type='CoDINOHead',
-        num_query=900,
+        num_query=1500,  # Increased query capacity
         num_classes=num_classes,
         in_channels=2048,
         as_two_stage=True,
@@ -258,7 +258,7 @@ model = dict(
     ],
     test_cfg=[
         dict(
-            max_per_img=300,
+            max_per_img=1000,  # Increased detection limit
             nms=dict(type='soft_nms', iou_threshold=0.8)),
         dict(
             rpn=dict(
@@ -368,3 +368,4 @@ default_hooks = dict(
 
 # No pretrained Co-DINO weights for ViT - train from scratch with DINOv2 backbone
 load_from = None
+resume = False

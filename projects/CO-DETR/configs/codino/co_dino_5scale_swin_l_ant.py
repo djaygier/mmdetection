@@ -15,7 +15,9 @@ num_dec_layer = 6
 loss_lambda = 2.0
 
 model = dict(
-    query_head=dict(num_classes=num_classes),
+    query_head=dict(
+        num_query=1500,
+        num_classes=num_classes),
     roi_head=[
         dict(
             type='CoStandardRoIHead',
@@ -76,6 +78,27 @@ model = dict(
                 type='CrossEntropyLoss',
                 use_sigmoid=True,
                 loss_weight=1.0 * num_dec_layer * loss_lambda)),
+    ],
+    test_cfg=[
+        dict(
+            max_per_img=1000,
+            nms=dict(type='soft_nms', iou_threshold=0.8)),
+        dict(
+            rpn=dict(
+                nms_pre=1000,
+                max_per_img=1000,
+                nms=dict(type='nms', iou_threshold=0.7),
+                min_bbox_size=0),
+            rcnn=dict(
+                score_thr=0.0,
+                nms=dict(type='nms', iou_threshold=0.5),
+                max_per_img=100)),
+        dict(
+            nms_pre=1000,
+            min_bbox_size=0,
+            score_thr=0.0,
+            nms=dict(type='nms', iou_threshold=0.6),
+            max_per_img=100),
     ]
 )
 
@@ -157,5 +180,5 @@ param_scheduler = [
 ]
 
 # 7. Resume setting
-load_from = '/workspace/mmdetection/work_dirs/co_dino_5scale_swin_l_ant/epoch_7.pth'
-resume = True
+load_from = 'https://download.openmmlab.com/mmdetection/v3.0/codetr/co_dino_5scale_swin_large_16e_o365tococo-614254c9.pth'
+resume = False
