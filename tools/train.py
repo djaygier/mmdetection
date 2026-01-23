@@ -9,18 +9,17 @@ from mmengine.runner import Runner
 
 from mmdet.utils import setup_cache_size_limit_of_dynamo
 
-# PyTorch 2.6+ compatibility fix for loading mmengine checkpoints
+# PyTorch 2.6+ compatibility fix: Force weights_only=False for trusted checkpoints
+# This is required because mmengine checkpoints contain HistoryBuffer and NumPy objects
+# that are not allowlisted by PyTorch's new security defaults.
 import torch
-import numpy
-if hasattr(torch.serialization, 'add_safe_globals'):
-    from mmengine.logging.history_buffer import HistoryBuffer
-    from mmengine.structures import PixelData, InstanceData
-    from mmdet.structures import DetDataSample
-    # Add common mmengine, mmdet and numpy classes/functions to the safe list
-    torch.serialization.add_safe_globals([
-        HistoryBuffer, PixelData, InstanceData, DetDataSample,
-        numpy._core.multiarray._reconstruct, numpy.ndarray, numpy.dtype
-    ])
+_original_torch_load = torch.load
+def _patched_torch_load(*args, **kwargs):
+    # Force weights_only=False if not explicitly set
+    if 'weights_only' not in kwargs:
+        kwargs['weights_only'] = False
+    return _original_torch_load(*args, **kwargs)
+torch.load = _patched_torch_load
 
 
 def parse_args():
