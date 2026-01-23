@@ -11,11 +11,15 @@ from mmdet.utils import setup_cache_size_limit_of_dynamo
 
 # PyTorch 2.6+ compatibility fix for loading mmengine checkpoints
 import torch
+import numpy
 if hasattr(torch.serialization, 'add_safe_globals'):
     from mmengine.logging.history_buffer import HistoryBuffer
-    from mmengine.structures import PixelData
-    # Add common mmengine classes to the safe list
-    torch.serialization.add_safe_globals([HistoryBuffer, PixelData])
+    from mmengine.structures import PixelData, InstanceData, DetDataSample
+    # Add common mmengine and numpy classes/functions to the safe list
+    torch.serialization.add_safe_globals([
+        HistoryBuffer, PixelData, InstanceData, DetDataSample,
+        numpy._core.multiarray._reconstruct, numpy.ndarray, numpy.dtype
+    ])
 
 
 def parse_args():
