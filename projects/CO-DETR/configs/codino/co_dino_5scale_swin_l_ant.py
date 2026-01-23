@@ -157,5 +157,5 @@ param_scheduler = [
 ]
 
 # 7. Resume setting
-load_from = '/workspace/mmdetection/work_dirs/co_dino_5scale_swin_l_ant/epoch_8.pth'
+load_from = '/workspace/mmdetection/work_dirs/co_dino_5scale_swin_l_ant/epoch_7.pth'
 resume = True
