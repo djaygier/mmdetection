@@ -127,6 +127,15 @@ train_pipeline = [
         saturation_range=(0.5, 1.5),
         hue_delta=18),
     dict(
+        type='Resize',
+        scale=image_size,
+        keep_ratio=True,
+        clip_object_border=True),  # Force clipping to fix Albumentations ValueError
+    dict(
+        type='FilterAnnotations',
+        min_gt_bbox_wh=(1, 1),
+        keep_empty=False),  # Remove any broken boxes
+    dict(
         type='Albu',
         transforms=[
             dict(
