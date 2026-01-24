@@ -107,7 +107,7 @@ optim_wrapper = dict(
     type='AmpOptimWrapper',
     optimizer=dict(type='AdamW', lr=1e-4, weight_decay=0.0001),
     clip_grad=dict(max_norm=0.1, norm_type=2),
-    accumulative_counts=1,  # Set to 1 to disable gradient accumulation
+    accumulative_counts=4,  # Gradient accumulation back to 4 (4x4 = 16 effective batch)
     paramwise_cfg=dict(custom_keys={'backbone': dict(lr_mult=0.1)}),
     loss_scale='dynamic')
 
@@ -241,7 +241,7 @@ test_pipeline = [
 ]
 
 train_dataloader = dict(
-    batch_size=8,  # Set to 16 as requested
+    batch_size=4,  # Set to 16 as requested
     num_workers=20,
     persistent_workers=True,
     dataset=dict(
