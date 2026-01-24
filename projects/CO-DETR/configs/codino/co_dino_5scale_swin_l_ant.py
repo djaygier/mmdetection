@@ -267,15 +267,20 @@ val_dataloader = dict(
 
 test_dataloader = val_dataloader
 
-val_evaluator = dict(ann_file=data_root + 'valid/_annotations.coco.json')
+val_evaluator = dict(
+    type='CocoMetric',
+    ann_file=data_root + 'valid/_annotations.coco.json',
+    metric='bbox',
+    format_only=False,
+    classwise=True)
 test_evaluator = val_evaluator
 
 # 5. Checkpoint setting
 default_hooks = dict(
     checkpoint=dict(by_epoch=True, interval=1, max_keep_ckpts=3),
     logger=dict(type='LoggerHook', interval=50))
-# 6. Schedule (36 epochs, following DINO 36e pattern)
-max_epochs = 36
+# 6. Schedule (100 epochs, scaled from original 36e)
+max_epochs = 100
 train_cfg = dict(type='EpochBasedTrainLoop', max_epochs=max_epochs, val_interval=1)
 
 param_scheduler = [
@@ -284,7 +289,7 @@ param_scheduler = [
         begin=0,
         end=max_epochs,
         by_epoch=True,
-        milestones=[27, 33],
+        milestones=[75, 90],
         gamma=0.1)
 ]
 
