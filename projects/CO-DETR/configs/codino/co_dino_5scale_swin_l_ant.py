@@ -2,12 +2,12 @@ _base_ = './co_dino_5scale_swin_l_16xb1_16e_o365tococo.py'
 
 # 1. Classes setting
 metainfo = {
-    'classes': ('ant', 'cocoon', 'egg', 'larva', 'pupa', 'queen'),
+    'classes': ('ant', 'cocoon', 'egg', 'larva', 'pupa'),
     'palette': [
-        (0, 139, 139), (255, 165, 0), (128, 0, 128), (0, 255, 0), (255, 20, 147), (0, 0, 255)
+        (0, 139, 139), (255, 165, 0), (128, 0, 128), (0, 255, 0), (255, 20, 147)
     ]
 }
-num_classes = 6
+num_classes = 5
 
 # 2. Model setting
 # We must re-define the heads to update num_classes. 
@@ -294,7 +294,7 @@ param_scheduler = [
 ]
 
 # 7. Resume setting
-load_from = '/workspace/mmdetection/work_dirs/co_dino_5scale_swin_l_ant/epoch_15.pth'
+load_from = 'https://download.openmmlab.com/mmdetection/v3.0/codetr/co_dino_5scale_swin_large_16e_o365tococo-614254c9.pth'
 # Handle the head structure changes between the checkpoint and current code
 load_pipeline = [
     dict(type='LoadImageFromFile'),
@@ -309,4 +309,4 @@ load_pipeline = [
 # Note: MMDet v3.x uses a more robust loading, the warning is usually non-fatal.
 # We add this just in case to help the checkpoint matching.
 checkpoint_config = dict(interval=1, max_keep_ckpts=3)
-resume = True
+resume = False
