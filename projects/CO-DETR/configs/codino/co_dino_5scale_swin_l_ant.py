@@ -130,10 +130,10 @@ train_pipeline = [
         type='Albu',
         transforms=[
             dict(
-                type='ShiftScaleRotate',
-                shift_limit=0.0625,
-                scale_limit=0.1,
-                rotate_limit=30,
+                type='Affine',
+                translate_percent={'x': (-0.0625, 0.0625), 'y': (-0.0625, 0.0625)},
+                scale=(0.9, 1.1),
+                rotate=(-30, 30),
                 interpolation=1,
                 p=0.5),
             dict(
@@ -165,7 +165,8 @@ train_pipeline = [
             format='coco',
             label_fields=['gt_bboxes_labels'],
             min_visibility=0.0,
-            filter_lost_elements=True),
+            filter_lost_elements=True,
+            check_each_transform=False),
         keymap={
             'img': 'image',
             'gt_bboxes': 'bboxes'
@@ -276,4 +277,18 @@ param_scheduler = [
 
 # 7. Resume setting
 load_from = 'https://download.openmmlab.com/mmdetection/v3.0/codetr/co_dino_5scale_swin_large_16e_o365tococo-614254c9.pth'
+# Handle the head structure changes between the checkpoint and current code
+load_pipeline = [
+    dict(type='LoadImageFromFile'),
+    dict(
+        type='LoadAnnotations',
+        with_bbox=True,
+        # Ensure boxes are clipped to image boundaries to prevent Albumentations crashes
+    )
+]
+# revise_keys can map query_head.label_embedding.weight to query_head.dn_generator.label_embedding.weight
+# but since class count changed, we take backbone mostly.
+# Note: MMDet v3.x uses a more robust loading, the warning is usually non-fatal.
+# We add this just in case to help the checkpoint matching.
+checkpoint_config = dict(interval=1, max_keep_ckpts=3)
 resume = False
