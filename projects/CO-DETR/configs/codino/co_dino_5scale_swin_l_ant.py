@@ -294,7 +294,7 @@ param_scheduler = [
 ]
 
 # 7. Resume setting
-load_from = 'https://download.openmmlab.com/mmdetection/v3.0/codetr/co_dino_5scale_swin_large_16e_o365tococo-614254c9.pth'
+load_from = '/workspace/mmdetection/work_dirs/co_dino_5scale_swin_l_ant/epoch_15.pth'
 # Handle the head structure changes between the checkpoint and current code
 load_pipeline = [
     dict(type='LoadImageFromFile'),
@@ -309,4 +309,4 @@ load_pipeline = [
 # Note: MMDet v3.x uses a more robust loading, the warning is usually non-fatal.
 # We add this just in case to help the checkpoint matching.
 checkpoint_config = dict(interval=1, max_keep_ckpts=3)
-resume = False
+resume = True
