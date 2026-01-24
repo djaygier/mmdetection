@@ -172,7 +172,7 @@ train_pipeline = [
         bbox_params=dict(
             type='BboxParams',
             format='pascal_voc',  # Use pascal_voc for [x1, y1, x2, y2]
-            label_fields=['gt_bboxes_labels'],
+            label_fields=['gt_bboxes_labels', 'gt_ignore_flags'],
             min_visibility=0.0,
             filter_lost_elements=True,
             check_each_transform=False),
@@ -181,6 +181,10 @@ train_pipeline = [
             'gt_bboxes': 'bboxes'
         },
         skip_img_without_anno=True),
+    dict(
+        type='FilterAnnotations',
+        min_gt_bbox_wh=(1e-2, 1e-2),
+        keep_empty=False),  # Ensure perfect synchronization after Albu
     dict(
         type='RandomChoice',
         transforms=[
