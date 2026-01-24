@@ -171,7 +171,7 @@ train_pipeline = [
         ],
         bbox_params=dict(
             type='BboxParams',
-            format='coco',
+            format='pascal_voc',  # Use pascal_voc for [x1, y1, x2, y2]
             label_fields=['gt_bboxes_labels'],
             min_visibility=0.0,
             filter_lost_elements=True,
