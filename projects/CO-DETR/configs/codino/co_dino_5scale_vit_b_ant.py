@@ -367,5 +367,5 @@ default_hooks = dict(
     logger=dict(type='LoggerHook', interval=50))
 
 # No pretrained Co-DINO weights for ViT - train from scratch with DINOv2 backbone
-load_from = None
+load_from = ""
 resume = False
