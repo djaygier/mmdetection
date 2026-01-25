@@ -243,6 +243,7 @@ train_dataloader = dict(
     num_workers=20,
     persistent_workers=True,
     dataset=dict(
+        _delete_=True,
         type='MultiImageMixDataset',
         dataset=dict(
             type='CocoDataset',
