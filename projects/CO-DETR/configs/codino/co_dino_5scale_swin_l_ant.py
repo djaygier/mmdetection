@@ -16,7 +16,7 @@ loss_lambda = 2.0
 
 model = dict(
     query_head=dict(
-        num_query=900,
+        num_query=1500,
         num_classes=num_classes),
     roi_head=[
         dict(
@@ -105,7 +105,7 @@ model = dict(
 # 2.1 Enable FP16 (Mixed Precision)
 optim_wrapper = dict(
     type='AmpOptimWrapper',
-    optimizer=dict(type='AdamW', lr=5e-5, weight_decay=0.0001),
+    optimizer=dict(type='AdamW', lr=1e-4, weight_decay=0.0001),
     clip_grad=dict(max_norm=0.1, norm_type=2),
     accumulative_counts=4,  # Gradient accumulation back to 4 (4x4 = 16 effective batch)
     paramwise_cfg=dict(custom_keys={'backbone': dict(lr_mult=0.1)}),
@@ -265,15 +265,9 @@ default_hooks = dict(
     logger=dict(type='LoggerHook', interval=50))
 # 6. Schedule (300 epochs for small dataset stability)
 max_epochs = 300
-train_cfg = dict(type='EpochBasedTrainLoop', max_epochs=max_epochs, val_interval=10)
+train_cfg = dict(type='EpochBasedTrainLoop', max_epochs=max_epochs, val_interval=1)
 
 param_scheduler = [
-    dict(
-        type='LinearLR',
-        start_factor=0.001,
-        by_epoch=False,
-        begin=0,
-        end=500), # Warmup for 500 iterations
     dict(
         type='MultiStepLR',
         begin=0,
