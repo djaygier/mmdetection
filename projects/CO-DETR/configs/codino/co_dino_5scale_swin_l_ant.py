@@ -2,9 +2,9 @@ _base_ = './co_dino_5scale_swin_l_16xb1_16e_o365tococo.py'
 
 # 1. Classes setting
 metainfo = {
-    'classes': ('ant', 'cocoon', 'egg', 'larva', 'pupa'),
+    'classes': ('ant', 'cocoon', 'egg', 'larva', 'pupa',),
     'palette': [
-        (0, 139, 139), (255, 165, 0), (128, 0, 128), (0, 255, 0), (255, 20, 147)
+        (0, 139, 139), (255, 165, 0), (128, 0, 128), (0, 255, 0), (255, 20, 147),
     ]
 }
 num_classes = 5
@@ -16,7 +16,7 @@ loss_lambda = 2.0
 
 model = dict(
     query_head=dict(
-        num_query=1500,
+        num_query=900,
         num_classes=num_classes),
     roi_head=[
         dict(
@@ -105,9 +105,9 @@ model = dict(
 # 2.1 Enable FP16 (Mixed Precision)
 optim_wrapper = dict(
     type='AmpOptimWrapper',
-    optimizer=dict(type='AdamW', lr=1e-4, weight_decay=0.0001),
+    optimizer=dict(type='AdamW', lr=5e-5, weight_decay=0.0001),
     clip_grad=dict(max_norm=0.1, norm_type=2),
-    accumulative_counts=8,  # Gradient accumulation back to 4 (4x4 = 16 effective batch)
+    accumulative_counts=4,  # Gradient accumulation back to 4 (4x4 = 16 effective batch)
     paramwise_cfg=dict(custom_keys={'backbone': dict(lr_mult=0.1)}),
     loss_scale='dynamic')
 
@@ -191,25 +191,14 @@ train_pipeline = [
             [
                 dict(
                     type='RandomChoiceResize',
-                    scales=[(480, 2048), (512, 2048), (544, 2048), (576, 2048),
-                            (608, 2048), (640, 2048), (672, 2048), (704, 2048),
-                            (736, 2048), (768, 2048), (800, 2048), (832, 2048),
-                            (864, 2048), (896, 2048), (928, 2048), (960, 2048),
-                            (992, 2048), (1024, 2048), (1056, 2048),
-                            (1088, 2048), (1120, 2048), (1152, 2048),
-                            (1184, 2048), (1216, 2048), (1248, 2048),
-                            (1280, 2048), (1312, 2048), (1344, 2048),
-                            (1376, 2048), (1408, 2048), (1440, 2048),
-                            (1472, 2048), (1504, 2048), (1536, 2048)],
+                    scales=[(480, 1024), (512, 1024), (544, 1024), (576, 1024),
+                            (608, 1024), (640, 1024), (672, 1024), (704, 1024),
+                            (736, 1024), (768, 1024), (800, 1024), (832, 1024),
+                            (864, 1024), (896, 1024), (928, 1024), (960, 1024),
+                            (992, 1024), (1024, 1024)],
                     keep_ratio=True)
             ],
             [
-                dict(
-                    type='RandomChoiceResize',
-                    # The radio of all image in train dataset < 7
-                    # follow the original implement
-                    scales=[(400, 4200), (500, 4200), (600, 4200)],
-                    keep_ratio=True),
                 dict(
                     type='RandomCrop',
                     crop_type='absolute_range',
@@ -217,16 +206,11 @@ train_pipeline = [
                     allow_negative_crop=True),
                 dict(
                     type='RandomChoiceResize',
-                    scales=[(480, 2048), (512, 2048), (544, 2048), (576, 2048),
-                            (608, 2048), (640, 2048), (672, 2048), (704, 2048),
-                            (736, 2048), (768, 2048), (800, 2048), (832, 2048),
-                            (864, 2048), (896, 2048), (928, 2048), (960, 2048),
-                            (992, 2048), (1024, 2048), (1056, 2048),
-                            (1088, 2048), (1120, 2048), (1152, 2048),
-                            (1184, 2048), (1216, 2048), (1248, 2048),
-                            (1280, 2048), (1312, 2048), (1344, 2048),
-                            (1376, 2048), (1408, 2048), (1440, 2048),
-                            (1472, 2048), (1504, 2048), (1536, 2048)],
+                    scales=[(480, 1024), (512, 1024), (544, 1024), (576, 1024),
+                            (608, 1024), (640, 1024), (672, 1024), (704, 1024),
+                            (736, 1024), (768, 1024), (800, 1024), (832, 1024),
+                            (864, 1024), (896, 1024), (928, 1024), (960, 1024),
+                            (992, 1024), (1024, 1024)],
                     keep_ratio=True)
             ]
         ]),
@@ -245,7 +229,7 @@ test_pipeline = [
 ]
 
 train_dataloader = dict(
-    batch_size=1,  # Set to 16 as requested
+    batch_size=4,  # Set to 16 as requested
     num_workers=20,
     persistent_workers=True,
     dataset=dict(
@@ -279,17 +263,23 @@ test_evaluator = val_evaluator
 default_hooks = dict(
     checkpoint=dict(by_epoch=True, interval=1, max_keep_ckpts=3),
     logger=dict(type='LoggerHook', interval=50))
-# 6. Schedule (100 epochs, scaled from original 36e)
-max_epochs = 100
-train_cfg = dict(type='EpochBasedTrainLoop', max_epochs=max_epochs, val_interval=1)
+# 6. Schedule (300 epochs for small dataset stability)
+max_epochs = 300
+train_cfg = dict(type='EpochBasedTrainLoop', max_epochs=max_epochs, val_interval=10)
 
 param_scheduler = [
+    dict(
+        type='LinearLR',
+        start_factor=0.001,
+        by_epoch=False,
+        begin=0,
+        end=500), # Warmup for 500 iterations
     dict(
         type='MultiStepLR',
         begin=0,
         end=max_epochs,
         by_epoch=True,
-        milestones=[75, 90],
+        milestones=[240, 280],
         gamma=0.1)
 ]
 
@@ -309,4 +299,5 @@ load_pipeline = [
 # Note: MMDet v3.x uses a more robust loading, the warning is usually non-fatal.
 # We add this just in case to help the checkpoint matching.
 checkpoint_config = dict(interval=1, max_keep_ckpts=3)
+# load_from = '/workspace/mmdetection/work_dirs/co_dino_5scale_swin_l_ant/epoch_12.pth'
 resume = False
