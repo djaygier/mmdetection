@@ -116,9 +116,19 @@ data_root = 'Ant brood.v10i.coco/'
 image_size = (1024, 1024)
 
 # Multi-scale and advanced augmentation pipeline
-train_pipeline = [
+inner_train_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(type='LoadAnnotations', with_bbox=True),
+]
+
+train_pipeline = [
+    dict(
+        type='RandomChoice',
+        transforms=[
+            [dict(type='MixUp', ratio_range=(0.8, 1.6), pad_val=114.0)],
+            [dict(type='CutMix', ratio_range=(0.8, 1.6), pad_val=114.0)],
+            []  # Original image without mixing
+        ]),
     dict(type='RandomFlip', prob=0.5),
     dict(
         type='PhotoMetricDistortion',
@@ -233,10 +243,14 @@ train_dataloader = dict(
     num_workers=20,
     persistent_workers=True,
     dataset=dict(
-        data_root=data_root,
-        metainfo=metainfo,
-        ann_file='train/_annotations.coco.json',
-        data_prefix=dict(img='train/'),
+        type='MultiImageMixDataset',
+        dataset=dict(
+            type='CocoDataset',
+            data_root=data_root,
+            metainfo=metainfo,
+            ann_file='train/_annotations.coco.json',
+            data_prefix=dict(img='train/'),
+            pipeline=inner_train_pipeline),
         pipeline=train_pipeline))
 
 val_dataloader = dict(
@@ -293,5 +307,5 @@ load_pipeline = [
 # Note: MMDet v3.x uses a more robust loading, the warning is usually non-fatal.
 # We add this just in case to help the checkpoint matching.
 checkpoint_config = dict(interval=1, max_keep_ckpts=3)
-load_from = '/workspace/mmdetection/work_dirs/co_dino_5scale_swin_l_ant/epoch_84.pth'
+load_from = '/workspace/mmdetection/work_dirs/co_dino_5scale_swin_l_ant/epoch_134.pth'
 resume = True
