@@ -106,7 +106,6 @@ model = dict(
 optim_wrapper = dict(
     type='AmpOptimWrapper',
     optimizer=dict(type='AdamW', lr=1e-4, weight_decay=0.0001),
-    clip_grad=dict(max_norm=0.1, norm_type=2),
     accumulative_counts=4,  # Gradient accumulation back to 4 (4x4 = 16 effective batch)
     paramwise_cfg=dict(custom_keys={'backbone': dict(lr_mult=0.1)}),
     loss_scale='dynamic')
