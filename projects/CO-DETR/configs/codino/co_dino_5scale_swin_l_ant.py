@@ -122,13 +122,7 @@ inner_train_pipeline = [
 ]
 
 train_pipeline = [
-    dict(
-        type='RandomChoice',
-        transforms=[
-            [dict(type='MixUp', img_scale=image_size, ratio_range=(0.8, 1.6), pad_val=114.0)],
-            [dict(type='Mosaic', img_scale=image_size, pad_val=114.0)],
-            []  # Original image without mixing
-        ]),
+    dict(type='Mosaic', img_scale=image_size, pad_val=114.0, prob=0.5),
     dict(type='RandomFlip', prob=0.5),
     dict(
         type='PhotoMetricDistortion',
